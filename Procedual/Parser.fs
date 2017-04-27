@@ -3,14 +3,6 @@
 open Common
 open FParsec
 
-type Unique<'a> = { id: int; value: 'a }
-let newUnique = 
-    let mutable counter = 0
-    let impl v =
-        counter <- counter + 1
-        { id = counter; value = v }
-    impl
-
 let (<!>) (p: Parser<_,_>) label : Parser<_,_> =
     (*fun stream ->
         printfn "%A: Entering %s" stream.Position label
@@ -37,32 +29,6 @@ with
         let (Var(name)) = this.name
         sprintf "%s : %A" name this.signature
 
-[<StructuredFormatDisplayAttribute("{AsString}")>]
-type Op = 
-    Add
-    | Subtract
-    | Multiply
-    | Divide
-    | Equal
-    | NotEqual
-    | GreaterThan
-    | GreaterThanOrEq
-    | LessThan
-    | LessThanOrEq
-with
-    member this.AsString =
-        match this with
-        | Add -> "+"
-        | Subtract -> "-"
-        | Multiply -> "*"
-        | Divide -> "/"
-        | Equal -> "="
-        | NotEqual -> "<>"
-        | GreaterThan -> ">"
-        | GreaterThanOrEq -> ">="
-        | LessThan -> "<"
-        | LessThanOrEq -> "<="
-
 let argumentsToString xs =
     List.map (fun x -> sprintf "%A" x) xs
     |> String.concat ","
@@ -75,8 +41,8 @@ type Expr =
     | Ref of Var
     | Let of VarDecl * Expr * Expr
     | Call of Expr * Expr list
-    | Fun of VarDecl list * Expr
     | If of Expr * Expr * Expr
+    | Sequence of Expr list
 with
     member this.AsString = 
         match this with
@@ -87,28 +53,29 @@ with
         | Let(decl,value,body) -> sprintf "let %A = %A;\n%A" decl value body
         | Call(f,xs) -> 
             sprintf "%A(%s)" f (argumentsToString xs)
-        | Fun(arguments,body) ->
-            sprintf "(fun %s -> %A)" (argumentsToString arguments) body
         | If(cond,ifTrue,ifFalse) ->
             sprintf "if %A then %A else %A" cond ifTrue ifFalse
-
+        | Sequence(exprs) ->
+            List.map (sprintf "%A;") exprs
+            |> String.concat "\n"
+            |> fun s -> sprintf "{ %s }" s
 
 [<StructuredFormatDisplayAttribute("{AsString}")>]
 type Declaration = 
     ValueDeclaration of VarDecl * Expr
-    | FunctionDeclaration of Var * VarDecl list * Expr
+    | FunctionDeclaration of Var * VarDecl list * Signature * Expr
 with
     member this.Name = 
         match this with
         | ValueDeclaration(decl,_) -> decl.name
-        | FunctionDeclaration(name,_,_) -> name
+        | FunctionDeclaration(name,_,_,_) -> name
     member this.AsString =
         match this with
         | ValueDeclaration(decl,value) -> sprintf "value %A = %A;" decl value
-        | FunctionDeclaration(Var(name),arguments,body) ->
+        | FunctionDeclaration(Var(name),arguments,retType,body) ->
             List.map (sprintf "%A") arguments
             |> String.concat ","
-            |> fun arguments -> sprintf "function %s(%s) = %A" name arguments body
+            |> fun arguments -> sprintf "function %s(%s) : %A = %A" name arguments retType body
 
 type ExprParser = Parser<Expr,unit>
 type DeclarationParser = Parser<Declaration,unit>
@@ -155,6 +122,11 @@ let pNumberLiteral : ExprParser = pint32 .>> spaces |>> Number
 let pParen : ExprParser =
     pchar '(' >>. spaces >>. pExpr .>> pchar ')' .>> spaces
 
+let pSequence : ExprParser =
+    let pMultiple = sepBy1 pExpr (pchar ';' >>. spaces)
+    between (pchar '{' >>. spaces) (pchar '}' >>. spaces) pMultiple
+    |>> Sequence
+
 let pLet : ExprParser = parse{
     do! pstring "let" >>. spaces
     let! name = pVarDecl
@@ -180,6 +152,7 @@ let pPrimitive : ExprParser =
         pLet <!> "let";
         pIf <!> "if";
         pParen <!> "paren";
+        pSequence <!> "seq";
         pRef <!> "ref";
         pNumberLiteral <!> "num";
     ]
@@ -222,6 +195,10 @@ let pRelational : ExprParser =
         ]
     chainl1 pAdditive op <!> "relational"
 
+let pAssign : ExprParser = 
+    (pExpr .>> pstring ":=" .>> spaces) .>>. pExpr
+    |>> fun (lhs,rhs) -> BinaryOp(lhs,Assign,rhs)
+
 pExprRef := spaces >>. pRelational
 
 let pValue : DeclarationParser = parse{
@@ -236,10 +213,12 @@ let pFunction : DeclarationParser = parse{
     do! pstring "function" >>. spaces
     let! name = pIdentifierVar
     let! arguments = between (pchar '(' >>. spaces) (pchar ')' >>. spaces) (many pVarDecl)
+    do! pchar ':' >>. spaces
+    let! retType = pSignature
     do! pchar '=' >>. spaces
     let! body = pExpr
     do! pchar ';' >>. spaces
-    return FunctionDeclaration(name,arguments,body)
+    return FunctionDeclaration(name,arguments,retType,body)
 }
 
 let pDeclaration : DeclarationParser =

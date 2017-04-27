@@ -57,6 +57,11 @@
     <Compile Include="AssemblyInfo.fs" />
     <Compile Include="Common.fs" />
     <Compile Include="Parser.fs" />
+    <Compile Include="AlphaTransform.fs" />
+    <Compile Include="Temporary.fs" />
+    <Compile Include="Frame.fs" />
+    <Compile Include="IR.fs" />
+    <Compile Include="TypeCheck.fs" />
     <Compile Include="Program.fs" />
     <None Include="App.config" />
     <Content Include="packages.config" />
