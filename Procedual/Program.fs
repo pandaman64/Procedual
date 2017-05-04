@@ -12,7 +12,7 @@ let main argv =
 function fact(x: Int) : Int =
     if x = 0 then 1
     else x * fact(x - 1);
-value main : Int =
+function main() : Int =
     let x : Int = { 
         fact(3);
         2
@@ -25,25 +25,11 @@ value main : Int =
         printfn "%A" decls
         let decls = AlphaTransform.transformDecls decls
         printfn "%A" decls
-        let env =
-            let arithmeticOpType = TC.TArrow(TC.intType,TC.TArrow(TC.intType,TC.intType))
-            let relationalOpType = TC.TArrow(TC.intType,TC.TArrow(TC.intType,TC.boolType))
-            let assignOpType = TC.TArrow(TC.intType,TC.TArrow(TC.intType,TC.unitType))
-            [
-                ExternalName(Var("+")),arithmeticOpType;
-                ExternalName(Var("-")),arithmeticOpType;
-                ExternalName(Var("*")),arithmeticOpType;
-                ExternalName(Var("/")),arithmeticOpType;
-                ExternalName(Var("=")),relationalOpType;
-                ExternalName(Var("<>")),relationalOpType;
-                ExternalName(Var(">=")),relationalOpType;
-                ExternalName(Var(">")),relationalOpType;
-                ExternalName(Var("<=")),relationalOpType;
-                ExternalName(Var("<")),relationalOpType;
-                ExternalName(Var(":=")),assignOpType;
-            ]
-            |> Map.ofList
+        let env = Map.empty
         let decls = TypeCheck.checkDecls env decls
         printfn "%A" decls
+        for decl in decls do
+            let stmt = IR.unStmt decl.program
+            printfn "%A" (Canon.linearize stmt)            
     | Failure(_,err,_) -> printfn "%A" err
     0 // 整数の終了コードを返します

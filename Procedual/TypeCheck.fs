@@ -25,51 +25,50 @@ with
 let parseVarDecl (decl: AlphaTransform.VarDecl) : VarDecl =
     { name = decl.name; signature = parseSignature decl.signature }
 
-type UntypedExpr =   
-    Number of int
-    | Bool of bool
-    | BinaryOp of Expr * Op * Expr
-    | Ref of Name
-    | Let of VarDecl * Expr * Expr
-    | Call of Expr * Expr list
-    | Fun of VarDecl list * Expr
-    | If of Expr * Expr * Expr
-    | Sequence of Expr list
-and
-    Expr = { expr: UntypedExpr; type_: Type }
+type Expr = { expr: IR.Program; type_: Type }
 
-type UntypedDeclaration =
-    ValueDeclaration of VarDecl * Expr
-    | FunctionDeclaration of Name * VarDecl list * Expr
-type Declaration = { decl: UntypedDeclaration; type_: Type }
-with
-    member this.Name = 
-        match this.decl with
-        | ValueDeclaration(decl,_) -> decl.name
-        | FunctionDeclaration(name,_,_) -> name
+type Declaration = {
+    name: Name;
+    entryPoint: Temporary.Label;
+    program: IR.Program;
+    type_: Type
+}
 
 let checkType (t1: Type) (t2: Type) : unit =
     match t1,t2 with
     | t1,t2 when t1 <> t2 -> failwithf "type mismatch between %A and %A" t1 t2
     | _ -> ignore "nothing"
 
-let rec checkExpr (env: Map<Name,Type>) (expr: AlphaTransform.Expr) : Expr =
+let rec checkExpr (env: Map<Name,Type>) (accesses: Map<Name,Frame.Access>) (frame: Frame.Frame) (expr: AlphaTransform.Expr) : Expr =
+    let chk = checkExpr env accesses frame
     match expr with
-    | AlphaTransform.Number(x) -> { expr = Number(x); type_ = intType }
-    | AlphaTransform.Bool(b) -> { expr = Bool(b); type_ = boolType }
+    | AlphaTransform.Number(x) -> { expr = IR.Expression(IR.Const(x)); type_ = intType }
+    | AlphaTransform.Bool(true) -> { expr = IR.Expression(IR.Const(1)); type_ = boolType }
+    | AlphaTransform.Bool(false) -> { expr = IR.Expression(IR.Const(0)); type_ = boolType }
     | AlphaTransform.BinaryOp(lhs,op,rhs) ->
-        match env.TryFind (ExternalName(Var(op.AsString))) with
-        | None -> failwithf "op %A not found in %A" op env
-        | Some(TArrow(lhsType,TArrow(rhsType,retType))) ->
-            let lhs = checkExpr env lhs
-            let rhs = checkExpr env rhs
-            checkType lhs.type_ lhsType
-            checkType rhs.type_ rhsType
-            { expr = BinaryOp(lhs,op,rhs); type_ = retType }
-        | _ -> failwithf "%A is not a binary operator" expr
+        let lhs = chk lhs
+        let rhs = chk rhs
+        
+        checkType lhs.type_ intType
+        checkType rhs.type_ intType
+
+        let retType =
+            match op with
+            | Add | Subtract | Multiply | Divide -> intType
+            | Equal | NotEqual
+            | GreaterThan | GreaterThanOrEq
+            | LessThan | LessThanOrEq -> boolType
+            | Assign -> unitType
+        
+        let expr =
+            match op with
+            | Assign -> IR.Statement(IR.Move(IR.unEx lhs.expr,IR.unEx rhs.expr))
+            | _ -> IR.Expression(IR.BinaryOp(IR.unEx lhs.expr,op,IR.unEx rhs.expr))
+
+        { expr = expr; type_ = retType }
     | AlphaTransform.Call(f,xs) ->
-        let f = checkExpr env f
-        let xs = List.map (checkExpr env) xs
+        let f = chk f
+        let xs = List.map chk xs
         
         let retType =
             let folder type_ (x: Expr) =
@@ -80,38 +79,76 @@ let rec checkExpr (env: Map<Name,Type>) (expr: AlphaTransform.Expr) : Expr =
                 | _ -> failwithf "not a function"
             List.fold folder f.type_ xs
 
-        { expr = Call(f,xs); type_ = retType }
+        { expr = IR.Expression(IR.Call(IR.unEx f.expr,xs |> List.map (fun x -> IR.unEx x.expr))); type_ = retType }
     | AlphaTransform.If(cond,ifTrue,ifFalse) ->
-        let cond = checkExpr env cond
-        let ifTrue = checkExpr env ifTrue
-        let ifFalse = checkExpr env ifFalse
+        let cond = chk cond
+        let ifTrue = chk ifTrue
+        let ifFalse = chk ifFalse
 
         checkType cond.type_ boolType
         checkType ifTrue.type_ ifFalse.type_
 
-        { expr = If(cond,ifTrue,ifFalse); type_ = ifTrue.type_ }
+        let exit = Temporary.newLabel()
+        let t = Temporary.newLabel()
+        let f = Temporary.newLabel()
+        let generator = IR.unBranch cond.expr
+        let expr = 
+            [
+                IR.MarkLabel(f);
+                IR.unStmt ifFalse.expr;
+                IR.Jump(IR.LabelRef(exit),[exit]);
+                IR.MarkLabel(t);
+                IR.unStmt ifTrue.expr;
+                IR.Jump(IR.LabelRef(exit),[exit]);
+            ]
+            |> List.fold (fun p p' -> IR.Sequence(p,p')) (generator(t,f))
+            |> IR.Statement
+
+        { expr = expr; type_ = ifTrue.type_ }
     | AlphaTransform.Let(name,value,body) ->
         let name = parseVarDecl name
+
         let env = Map.add name.name name.signature env
-        let value = checkExpr env value
-        let body = checkExpr env body
+        let access = frame.AllocLocal name.signature.Size true
 
+        let value = checkExpr env accesses frame value
         checkType name.signature value.type_
-        { expr = Let(name,value,body); type_ = body.type_ }
-    | AlphaTransform.Sequence(exprs) ->
-        let exprs = List.map (checkExpr env) exprs
-        { expr = Sequence(exprs); type_ = (List.last exprs).type_ }
-    | AlphaTransform.Ref(v) -> { expr = Ref(v); type_ = Map.find v env }
 
-let checkDecl (env: Map<Name,Type>) (decl: AlphaTransform.Declaration) : Declaration =
+        let accesses = Map.add name.name access accesses
+
+        let body = checkExpr env accesses frame body
+
+        let expr =
+            IR.ESeq(
+                IR.Move(frame.AccessVar access,IR.unEx value.expr),
+                IR.unEx body.expr
+            )
+
+        { expr = IR.Expression(expr); type_ = body.type_ }
+    | AlphaTransform.Sequence(exprs) ->
+        let exprs = List.map chk exprs
+        let expr =
+            let rec make stmt (exprs: Expr list) =
+                match exprs with
+                | [] -> failwith "empty sequence"
+                | [ expr ] -> stmt,expr.expr
+                | expr :: exprs -> make (IR.Sequence(stmt,IR.ExprStmt(IR.unEx expr.expr))) exprs
+            let stmts,expr = make (IR.ExprStmt(IR.Const(0))) exprs
+            IR.ESeq(stmts,IR.unEx expr)
+        { expr = IR.Expression(expr); type_ = (List.last exprs).type_ }
+    | AlphaTransform.Ref(v) ->
+        match accesses.TryFind v with
+        | Some(access) ->
+            { 
+                expr = IR.Expression(frame.AccessVar access); 
+                type_ = Map.find v env 
+            }
+        | None -> failwithf "access to %A not found in %A" v accesses
+
+let checkDecl (env: Map<Name,Type>) (accesses: Map<Name,Frame.Access> ref) (decl: AlphaTransform.Declaration) : Declaration =
     match decl with
     | AlphaTransform.ValueDeclaration(name,body) -> 
-        let name = parseVarDecl name
-        let env = Map.add name.name name.signature env
-        let body = checkExpr env body
-
-        checkType name.signature body.type_
-        { decl = ValueDeclaration(name,body); type_ = name.signature }
+        failwith "sonouchi kangaeru"
     | AlphaTransform.FunctionDeclaration(name,arguments,retType,body) -> 
         let arguments = arguments |> List.map parseVarDecl
         let retType = parseSignature retType
@@ -122,14 +159,35 @@ let checkDecl (env: Map<Name,Type>) (decl: AlphaTransform.Declaration) : Declara
             |> List.fold (fun env decl -> Map.add decl.name decl.signature env) env
             |> Map.add name funType
 
-        let body = checkExpr env body
+        let frame =
+            let name = Var(name.AsString)
+            let arguments = arguments |> List.map (fun arg -> arg.signature.Size,true)
+            let framePointer = Frame.stackPointer
+            Frame.Frame(name,arguments,framePointer)
+
+        let label = Temporary.newLabel()
+        accesses := Map.add name (Frame.Access.Literal(IR.LabelRef(label))) !accesses
+
+        let accesses = 
+            List.zip arguments frame.arguments
+            |> List.fold (fun accesses (arg,access) -> Map.add arg.name access accesses) !accesses
+
+        
+        let body = checkExpr env accesses frame body
         checkType body.type_ retType
 
-        { decl = FunctionDeclaration(name,arguments,body); type_ = funType }
+        let prologue = IR.MarkLabel(label)
+        let body = IR.Move(IR.Temp(Frame.returnValue),IR.unEx body.expr)
+        let stmt = IR.Sequence(prologue,body)
+
+        { name = name; entryPoint = label; program = IR.Statement(stmt); type_ = funType }
 
 let checkDecls (env: Map<Name,Type>) (decls: AlphaTransform.Declaration list) : Declaration list = 
-    let mapFolder env decl =
-        let decl = checkDecl env decl
-        (decl,Map.add decl.Name decl.type_ env)
+    let accesses = ref Map.empty
+    let mapFolder env (decl: AlphaTransform.Declaration) =
+        printfn "%A" decl.Name
+        let decl = checkDecl env accesses decl
+        let access = Frame.Access.Literal(IR.LabelRef(decl.entryPoint))
+        decl,(Map.add decl.name decl.type_ env)
     List.mapFold mapFolder env decls
     |> fst

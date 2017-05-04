@@ -2,15 +2,18 @@
 
 open Common
 
-type Temporary = Unique<unit>
+[<StructuredFormatDisplayAttribute("{AsString}")>]
+type Temporary = Temp of Unique<unit>
+with
+    member this.AsString = 
+        let (Temp(t)) = this
+        sprintf "t%d" t.id
+[<StructuredFormatDisplayAttribute("{AsString}")>]
+type Label = Label of Unique<string>
+with
+    member this.AsString =
+        let (Label(l)) = this
+        sprintf "%s%d" l.value l.id
 
-type Label = Unique<string>
-
-type Level = Level of int
-
-let newLabel() = newUnique "L"
-let newTemporary() = newUnique ()
-let newLabel name = newUnique name
-
-type Translate() =
-    let level = Level(0)
+let newLabel() = Label(newUnique "L")
+let newTemporary() = Temp(newUnique ())

@@ -22,6 +22,11 @@ type Expr =
 type Declaration = 
     ValueDeclaration of VarDecl * Expr
     | FunctionDeclaration of Name * VarDecl list * Signature * Expr
+with
+    member this.Name =
+        match this with
+        | ValueDeclaration(decl,_) -> decl.name
+        | FunctionDeclaration(name,_,_,_) -> name
 
 type Environment = Map<Var,Name>
 

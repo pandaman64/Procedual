@@ -2,23 +2,41 @@
 
 open Common
 
+let stackPointer = Temporary.newTemporary()
+let returnValue = Temporary.newTemporary()
+
 type Access = 
     InMemory of int // offset from fp
     | InRegister of Temporary.Temporary // temporary register
-type Frame = { 
-    name: Var;
-    arguments: Access list;   
-    currentOffset: int; 
-}
+    | Literal of IR.Expr
+type Frame(name,arguments : (int * bool) list,framePointer) =
+    let mutable currentOffset: int = 0
 
-let newFrame (name: Var) (arguments: (int * bool) list) : Frame = 
-    // always spill arguments for the sake of simplicity of compiler
-    let mapFolder offset (size,_) =
-        let offset = offset - size
-        InMemory(offset),offset
-    let arguments = List.mapFold mapFolder 0 arguments |> fst
-    { name = name; arguments = arguments; currentOffset = 0 }
+    member this.arguments =
+        let mapFolder offset (size,spill) =
+            let offset = offset - size
+            if spill
+            then
+                InMemory(offset)
+            else
+                InRegister(Temporary.newTemporary())
+            ,offset
+        List.mapFold mapFolder 0 arguments
+        |> fst
 
-let allocLocal (frame: Frame) (size: int) (spill: bool) =
-    { name = frame.name; arguments = frame.arguments; currentOffset = frame.currentOffset + size},
-    InMemory(frame.currentOffset)
+    member this.Name : Var = name
+
+    member this.AccessVar access =
+        match access with
+        | InMemory(offset) -> IR.Mem(IR.BinaryOp(IR.Temp(framePointer),Add,IR.Const(offset)))
+        | InRegister(reg) -> IR.Mem(IR.Temp(reg))
+        | Literal(e) -> e
+
+    member this.AllocLocal (size: int) (spill: bool) =
+        if spill
+        then
+            let offset = currentOffset
+            currentOffset <- currentOffset + size
+            InMemory(offset)
+        else
+            InRegister(Temporary.newTemporary())
