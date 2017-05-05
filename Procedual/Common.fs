@@ -5,12 +5,13 @@ type Var = Var of string
 type Unique<'a> = { id: int; value: 'a }
 with
     member this.Value = this.value
-let newUnique = 
-    let mutable counter = 0
-    let impl v =
-        counter <- counter + 1
-        { id = counter; value = v }
-    impl
+type UniqueBuilder() =
+    let mutable count = 0
+    member this.Allocate v =
+        count <- count + 1
+        { id = count; value = v }
+let builder = new UniqueBuilder()
+let newUnique v = builder.Allocate v
 
 [<StructuredFormatDisplayAttribute("{AsString}")>]
 type Name = 

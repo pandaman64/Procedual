@@ -4,6 +4,7 @@ open Common
 
 let stackPointer = Temporary.newTemporary()
 let returnValue = Temporary.newTemporary()
+let returnAddress = Temporary.newTemporary()
 
 type Access = 
     InMemory of int // offset from fp

@@ -61,8 +61,9 @@
     <Compile Include="Temporary.fs" />
     <Compile Include="IR.fs" />
     <Compile Include="Frame.fs" />
-    <Compile Include="TypeCheck.fs" />
     <Compile Include="Canon.fs" />
+    <Compile Include="TypeCheck.fs" />
+    <Compile Include="InstructionChoice.fs" />
     <Compile Include="Program.fs" />
     <None Include="App.config" />
     <Content Include="packages.config" />

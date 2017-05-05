@@ -30,7 +30,8 @@ type Expr = { expr: IR.Program; type_: Type }
 type Declaration = {
     name: Name;
     entryPoint: Temporary.Label;
-    program: IR.Program;
+    body: Canon.Block list;
+    epilogueEntry: Temporary.Label;
     type_: Type
 }
 
@@ -91,18 +92,21 @@ let rec checkExpr (env: Map<Name,Type>) (accesses: Map<Name,Frame.Access>) (fram
         let exit = Temporary.newLabel()
         let t = Temporary.newLabel()
         let f = Temporary.newLabel()
+        let ret = Temporary.newTemporary()
         let generator = IR.unBranch cond.expr
         let expr = 
             [
                 IR.MarkLabel(f);
-                IR.unStmt ifFalse.expr;
+                IR.Move(IR.Mem(IR.Temp(ret)),IR.unEx ifFalse.expr)
                 IR.Jump(IR.LabelRef(exit),[exit]);
                 IR.MarkLabel(t);
-                IR.unStmt ifTrue.expr;
+                IR.Move(IR.Mem(IR.Temp(ret)),IR.unEx ifTrue.expr)
                 IR.Jump(IR.LabelRef(exit),[exit]);
+                IR.MarkLabel(exit);
             ]
             |> List.fold (fun p p' -> IR.Sequence(p,p')) (generator(t,f))
-            |> IR.Statement
+            |> fun s -> IR.ExprSequence(s,IR.Mem(IR.Temp(ret)))
+            |> IR.Expression
 
         { expr = expr; type_ = ifTrue.type_ }
     | AlphaTransform.Let(name,value,body) ->
@@ -119,7 +123,7 @@ let rec checkExpr (env: Map<Name,Type>) (accesses: Map<Name,Frame.Access>) (fram
         let body = checkExpr env accesses frame body
 
         let expr =
-            IR.ESeq(
+            IR.ExprSequence(
                 IR.Move(frame.AccessVar access,IR.unEx value.expr),
                 IR.unEx body.expr
             )
@@ -134,7 +138,7 @@ let rec checkExpr (env: Map<Name,Type>) (accesses: Map<Name,Frame.Access>) (fram
                 | [ expr ] -> stmt,expr.expr
                 | expr :: exprs -> make (IR.Sequence(stmt,IR.ExprStmt(IR.unEx expr.expr))) exprs
             let stmts,expr = make (IR.ExprStmt(IR.Const(0))) exprs
-            IR.ESeq(stmts,IR.unEx expr)
+            IR.ExprSequence(stmts,IR.unEx expr)
         { expr = IR.Expression(expr); type_ = (List.last exprs).type_ }
     | AlphaTransform.Ref(v) ->
         match accesses.TryFind v with
@@ -162,7 +166,8 @@ let checkDecl (env: Map<Name,Type>) (accesses: Map<Name,Frame.Access> ref) (decl
         let frame =
             let name = Var(name.AsString)
             let arguments = arguments |> List.map (fun arg -> arg.signature.Size,true)
-            let framePointer = Frame.stackPointer
+            //let framePointer = Frame.stackPointer
+            let framePointer = Temporary.newTemporary()
             Frame.Frame(name,arguments,framePointer)
 
         let label = Temporary.newLabel()
@@ -171,16 +176,34 @@ let checkDecl (env: Map<Name,Type>) (accesses: Map<Name,Frame.Access> ref) (decl
         let accesses = 
             List.zip arguments frame.arguments
             |> List.fold (fun accesses (arg,access) -> Map.add arg.name access accesses) !accesses
-
         
         let body = checkExpr env accesses frame body
         checkType body.type_ retType
 
         let prologue = IR.MarkLabel(label)
         let body = IR.Move(IR.Temp(Frame.returnValue),IR.unEx body.expr)
-        let stmt = IR.Sequence(prologue,body)
+        let epilogueEntry = Temporary.newLabel()
+        let epilogue = 
+            IR.Sequence(
+                IR.MarkLabel(epilogueEntry)
+                ,IR.Jump(IR.Temp(Frame.returnAddress),[(*empty is ok?*)]))
+        
+        let body = 
+            let body = 
+                //Canon.linearize (IR.Sequence(prologue,body))
+                Canon.linearize body
+                |> fun stmts -> Canon.toBasicBlock stmts epilogueEntry
+                |> fun stmts -> Canon.scheduleTrace stmts epilogueEntry
+                |> List.reduce List.append
+            List.append body [Canon.linearize epilogue]
 
-        { name = name; entryPoint = label; program = IR.Statement(stmt); type_ = funType }
+        {
+            name = name;
+            entryPoint = label;
+            body = body;
+            epilogueEntry = Temporary.newLabel();
+            type_ = funType
+        }
 
 let checkDecls (env: Map<Name,Type>) (decls: AlphaTransform.Declaration list) : Declaration list = 
     let accesses = ref Map.empty

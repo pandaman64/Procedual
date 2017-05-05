@@ -196,10 +196,13 @@ let pRelational : ExprParser =
     chainl1 pAdditive op <!> "relational"
 
 let pAssign : ExprParser = 
-    (pExpr .>> pstring ":=" .>> spaces) .>>. pExpr
-    |>> fun (lhs,rhs) -> BinaryOp(lhs,Assign,rhs)
+    let op = 
+        pOp [
+            ":=",Assign
+        ]
+    chainl1 pRelational op <!> "relational"
 
-pExprRef := spaces >>. pRelational
+pExprRef := spaces >>. pAssign
 
 let pValue : DeclarationParser = parse{
     do! pstring "value" >>. spaces
