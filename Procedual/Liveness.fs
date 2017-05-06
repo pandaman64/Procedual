@@ -2,8 +2,7 @@
 
 module IC = InstructionChoice
 
-// Control Flow Graph
-module Graph =
+module DirectedGraph =
     type Node<'a> = {
         id: int;
         value: 'a;
@@ -36,6 +35,38 @@ module Graph =
         let isDifferentInstance a b = LanguagePrimitives.PhysicalEquality a b |> not
         from.successors := List.where (isDifferentInstance to_) !from.successors
         to_.predecessors := List.where (isDifferentInstance from) !to_.predecessors
+
+module UndirectedGraph =
+    type Node<'a> = {
+        id: int;
+        value: 'a;
+        graph: Graph;
+        adjacents: Node<'a> list ref;
+    }
+    and Graph() =
+        let mutable count = 0
+
+        member this.MakeNode<'a> (v: 'a) : Node<'a> =
+            let ret = {
+                id = count;
+                value = v;
+                graph = this;
+                adjacents = ref [];
+            }
+            count <- count + 1
+            ret
+
+        member this.InitVisited =
+            List.init count (fun _ -> ref false)
+
+    let MakeEdge<'a> (from: Node<'a>) (to_: Node<'a>) : unit =
+        from.adjacents := to_ :: !from.adjacents
+        to_.adjacents := from :: !to_.adjacents
+
+    let RemoveEdge<'a when 'a : equality> (from: Node<'a>) (to_: Node<'a>) : unit =
+        let isDifferentInstance a b = LanguagePrimitives.PhysicalEquality a b |> not
+        from.adjacents := List.where (isDifferentInstance to_) !from.adjacents
+        to_.adjacents := List.where (isDifferentInstance from) !to_.adjacents
 
 module FlowGraph =
     [<StructuredFormatDisplayAttribute("{AsString}")>]
@@ -72,14 +103,14 @@ module FlowGraph =
 
     [<StructuredFormatDisplayAttribute("{AsString}")>]
     type Liveness = {
-        entry: Graph.Node<Node>;
-        exit: Graph.Node<Node>;
+        entry: DirectedGraph.Node<Node>;
+        exit: DirectedGraph.Node<Node>;
     }
     with
         member this.AsString =
             let mutable ret = "digraph g{\n"
             let visited = this.entry.graph.InitVisited
-            let rec visit (node: Graph.Node<Node>) =
+            let rec visit (node: DirectedGraph.Node<Node>) =
                 ret <- ret + sprintf """%d [label="%A"];""" node.id node.value + "\n"
                 visited.Item node.id := true
                 for s in !node.successors do
@@ -105,7 +136,7 @@ module FlowGraph =
                 x,middle,last
             | [] -> failwith "no items"
 
-        let graph = new Graph.Graph()
+        let graph = new DirectedGraph.Graph()
         let nodes = 
             instructions
             |> List.map (fun inst -> { inst = inst; inVariables = ref Set.empty; outVariables = ref Set.empty })
@@ -120,19 +151,19 @@ module FlowGraph =
                 Map.empty
 
         for (f,t) in List.pairwise nodes do
-            Graph.MakeEdge f t
+            DirectedGraph.MakeEdge f t
             match f.value.inst with
             | IC.Operation(op) ->
                 match op.jump with
                 | None -> ignore "do nothing"
                 | Some(labels) -> 
-                    List.fold (fun () l -> Graph.MakeEdge f (Map.find l jumpTo)) () labels
+                    List.fold (fun () l -> DirectedGraph.MakeEdge f (Map.find l jumpTo)) () labels
             | _ -> ignore "do nothing"
 
         let entry,middle,exit = split nodes
         let sorted =
             let visited = graph.InitVisited
-            let rec visitEach (ps: Graph.Node<_> list) = 
+            let rec visitEach (ps: DirectedGraph.Node<_> list) = 
                 match ps with
                 | [] -> []
                 | p :: ps when !(visited.Item p.id) -> visitEach ps
@@ -140,7 +171,7 @@ module FlowGraph =
                     // mark early to reduce unnecessary visit
                     let chain = visit p
                     List.append chain (visitEach ps)
-            and visit (node: Graph.Node<_>) =
+            and visit (node: DirectedGraph.Node<_>) =
                 visited.Item node.id := true
                 node :: visitEach (!node.predecessors)
             visit exit
@@ -166,3 +197,56 @@ module FlowGraph =
             ignore "solving"
 
         { entry = entry; exit = exit }
+
+module Intereference =
+    type Node = Temporary.Temporary
+
+    let analyzeIntereference (liveness: FlowGraph.Liveness) : UndirectedGraph.Node<Node> list =
+        let igraph = new UndirectedGraph.Graph()
+
+        let mutable nodes = Map.empty
+
+        let updateNodes (variables: Node list) =
+            let mapFolder nodes v =
+                match Map.tryFind v nodes with
+                | None -> 
+                    printfn "not found"
+                    let node = igraph.MakeNode v
+                    node,Map.add v node nodes
+                | Some(node) ->
+                    node,nodes
+            let makeNode v =
+                match Map.tryFind v nodes with
+                | None ->
+                    let node = igraph.MakeNode v
+                    nodes <- Map.add v node nodes
+                    node
+                | Some(node) -> node
+            let variables = List.map makeNode variables
+
+            let rec makeEdges variables =
+                match variables with
+                | [] -> ignore "do nothing"
+                | v :: variables ->
+                    makeEdges variables
+                    for v' in variables do
+                        UndirectedGraph.MakeEdge v v'
+
+            makeEdges variables
+            variables
+
+        let visited = liveness.entry.graph.InitVisited
+        let rec visit (node: DirectedGraph.Node<FlowGraph.Node>) =
+            let visited = visited.Item node.id
+            if !visited
+            then
+                []
+            else
+                visited := true 
+                let variables = Set.union node.value.definitions !node.value.outVariables |> Set.toList
+                let variables = updateNodes variables
+                List.map visit !node.successors
+                |> List.concat
+                |> List.append variables
+
+        visit liveness.entry

@@ -47,7 +47,34 @@ function main() : Int =
             for inst in decl.Value do
                 printfn "%A" inst
 
-        for decl in decls do
-            System.IO.File.WriteAllText(sprintf "%A.dot" decl.Key,sprintf "%A" (Liveness.FlowGraph.makeGraph decl.Value))
+        let cfgs = Map.map (fun _ insts -> Liveness.FlowGraph.makeGraph insts) decls
+        for cfg in cfgs do
+            System.IO.File.WriteAllText(sprintf "%A.dot" cfg.Key,sprintf "%A" cfg.Value)
+
+        let igraphs = Map.map (fun _ cfg -> Liveness.Intereference.analyzeIntereference cfg) cfgs
+        for igraph in igraphs do
+            let mutable visited = Map.empty 
+            let name = igraph.Key
+            let igraph = igraph.Value
+
+            let mutable text = ""
+            let rec visit (node: Liveness.UndirectedGraph.Node<Liveness.Intereference.Node>) =
+                printfn "visiting %A, status: %A" node.id visited
+                visited <- Map.add node.id true visited
+                printfn "current status: %A" visited
+                
+                text <- text + sprintf "%A;\n" node.value
+                printfn "adjacents: %d" (!node.adjacents).Length
+                for idx,adj in List.indexed !node.adjacents do
+                    printfn "%dth adj: %A" idx adj.id
+                    match visited.TryFind adj.id with
+                    | Some(true) -> ignore "nothing"
+                    | Some(false)
+                    | None ->   
+                        text <- text + sprintf "%A -- %A;\n" node.value adj.value
+                        visit adj
+            visit igraph.Head
+
+            System.IO.File.WriteAllText(sprintf "%A.igraph.dot" name,sprintf "graph G{\n%s\n}" text)
     | Failure(_,err,_) -> printfn "%A" err
     0 // 整数の終了コードを返します
