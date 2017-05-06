@@ -6,6 +6,28 @@ let stackPointer = Temporary.newTemporary()
 let returnValue = Temporary.newTemporary()
 let returnAddress = Temporary.newTemporary()
 
+let registers =
+    [
+        // r0 = RV
+        returnValue;
+        // r1
+        Temporary.newTemporary();
+        // r2
+        Temporary.newTemporary();
+        // r3
+        Temporary.newTemporary();
+        // r4
+        Temporary.newTemporary();
+        // r5
+        Temporary.newTemporary();
+        // r6 = SP
+        stackPointer;
+        // r7 = RA
+        returnAddress;
+    ]
+// Call instruction invalidates all registers
+let calldefs = registers
+
 type Access = 
     InMemory of int // offset from fp
     | InRegister of Temporary.Temporary // temporary register

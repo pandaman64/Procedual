@@ -38,5 +38,12 @@ function main() : Int =
             for block in blocks do
                 for stmt in block do
                     printfn "%A" stmt
+
+        let decls = InstructionChoice.choiceInstructions decls
+        for decl in decls do
+            printfn "---------------"
+            printfn "%A" decl.Key
+            for inst in decl.Value do
+                printfn "%A" inst
     | Failure(_,err,_) -> printfn "%A" err
     0 // 整数の終了コードを返します
