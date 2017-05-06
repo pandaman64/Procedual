@@ -34,6 +34,8 @@ type Emitter(decl: TypeCheck.Declaration) =
 
     let rec choiceExpr (expr: IR.Expr) : Temporary.Temporary =
         match expr with
+        | IR.BinaryOp(lhs,Common.Add,IR.Const(0)) ->
+            choiceExpr lhs
         | IR.BinaryOp(lhs,Common.Add,IR.Const(x)) ->
             let lhs = choiceExpr lhs
             let t = Temporary.newTemporary()
@@ -41,12 +43,14 @@ type Emitter(decl: TypeCheck.Declaration) =
             {
                 op = ADDI(x);
                 dst = [t];
-                src = [];
+                src = [t];
                 jump = None
             }
             |> Operation
             |> Emit
             t
+        | IR.BinaryOp(IR.Const(0),Common.Add,rhs) ->
+            choiceExpr rhs
         | IR.BinaryOp(IR.Const(x),Common.Add,rhs) ->
             let rhs = choiceExpr rhs
             let t = Temporary.newTemporary()
@@ -54,7 +58,7 @@ type Emitter(decl: TypeCheck.Declaration) =
             {
                 op = ADDI(x);
                 dst = [t];
-                src = [];
+                src = [t];
                 jump = None
             }
             |> Operation
@@ -67,7 +71,7 @@ type Emitter(decl: TypeCheck.Declaration) =
             {
                 op = ADDI(-x);
                 dst = [t];
-                src = [];
+                src = [t];
                 jump = None
             }
             |> Operation
@@ -81,13 +85,13 @@ type Emitter(decl: TypeCheck.Declaration) =
             {
                 op = BINOP(op);
                 dst = [t];
-                src = [rhs];
+                src = [t; rhs];
                 jump = None;
             }
             |> Operation
             |> Emit
             t
-        | IR.Call(f,xs) -> 
+        | IR.Call(f,xs) ->
             {
                 op = CALL;
                 dst = Frame.calldefs;
@@ -187,8 +191,8 @@ type Emitter(decl: TypeCheck.Declaration) =
             |> Emit
             {
                 op = STORE;
-                dst = [choiceExpr dst];
-                src = [t];
+                dst = [];
+                src = [choiceExpr dst; t];
                 jump = None;
             }
             |> Operation
@@ -196,8 +200,8 @@ type Emitter(decl: TypeCheck.Declaration) =
         | IR.Move(IR.Mem(IR.Temp(t)),value) ->
             {
                 op = STORE;
-                dst = [t];
-                src = [choiceExpr value];
+                dst = [];
+                src = [t; choiceExpr value];
                 jump = None
             }
             |> Operation
@@ -205,8 +209,8 @@ type Emitter(decl: TypeCheck.Declaration) =
         | IR.Move(IR.Mem(dst),src) ->
             {
                 op = STORE;
-                dst = [choiceExpr dst];
-                src = [choiceExpr src];
+                dst = [];
+                src = [choiceExpr dst; choiceExpr src];
                 jump = None
             }
             |> Operation

@@ -14,9 +14,9 @@ function fib(x: Int) : Int =
     else if x = 1 then 1
     else fib(x - 1) + fib(x - 2);
 function main() : Int =
-    let x : Int = fib(3);
+    let x : Int = 1;
     {
-        x := 4;
+        x := x + x;
         fib(x)
     };
 """
@@ -59,14 +59,9 @@ function main() : Int =
 
             let mutable text = ""
             let rec visit (node: Liveness.UndirectedGraph.Node<Liveness.Intereference.Node>) =
-                printfn "visiting %A, status: %A" node.id visited
                 visited <- Map.add node.id true visited
-                printfn "current status: %A" visited
-                
                 text <- text + sprintf "%A;\n" node.value
-                printfn "adjacents: %d" (!node.adjacents).Length
-                for idx,adj in List.indexed !node.adjacents do
-                    printfn "%dth adj: %A" idx adj.id
+                for adj in !node.adjacents do
                     match visited.TryFind adj.id with
                     | Some(true) -> ignore "nothing"
                     | Some(false)
