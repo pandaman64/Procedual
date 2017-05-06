@@ -11,6 +11,8 @@ type OpCode =
     | LDI of int
     | LDLABEL of Temporary.Label
     | NOP
+    | JUMP
+    | BEQ
 
 type Operation = {
     op: OpCode;
@@ -155,13 +157,24 @@ type Emitter(decl: TypeCheck.Declaration) =
         | IR.ExprStmt(_) -> failwith "i have no idea"
         | IR.MarkLabel(l) -> Label(l) |> Emit
         | IR.Jump(l,labels) -> 
-            printfn "skipped jumps"
-            ignore "atode"
-            //failwith "atode"
-        | IR.ConditionalJump(_,_,_) ->
-            printfn "skipped jumps"
-            ignore "atode"
-            //failwith "ato"
+            {
+                op = JUMP;
+                dst = [];
+                src = [choiceExpr l];
+                jump = Some(labels)
+            }
+            |> Operation
+            |> Emit
+        | IR.ConditionalJump(cond,t,f) ->
+            // assume program falls through else-clause
+            {
+                op = BEQ;
+                dst = [];
+                src = [choiceExpr cond];
+                jump = Some([t])
+            }
+            |> Operation
+            |> Emit
         | IR.Move(IR.Mem(dst),IR.Mem(src)) ->
             let t = Temporary.newTemporary()
             {
@@ -233,7 +246,7 @@ type Emitter(decl: TypeCheck.Declaration) =
                     op = NOP;
                     dst = [Frame.returnAddress; Frame.stackPointer; Frame.returnValue];
                     src = [];
-                    jump = None
+                    jump = Some([]);
                 }
                 :: instructions
         List.rev instructions
