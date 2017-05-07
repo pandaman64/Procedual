@@ -7,8 +7,8 @@ module DirectedGraph =
         id: int;
         value: 'a;
         graph: Graph;
-        successors: Node<'a> list ref;
-        predecessors: Node<'a> list ref;
+        successors: Map<int,Node<'a>> ref;
+        predecessors: Map<int,Node<'a>> ref;
     }
     and Graph() =
         let mutable count = 0
@@ -18,8 +18,8 @@ module DirectedGraph =
                 id = count;
                 value = v;
                 graph = this;
-                successors = ref [];
-                predecessors = ref [];
+                successors = ref Map.empty;
+                predecessors = ref Map.empty;
             }
             count <- count + 1
             ret
@@ -28,20 +28,19 @@ module DirectedGraph =
             List.init count (fun _ -> ref false)
 
     let MakeEdge<'a> (from: Node<'a>) (to_: Node<'a>) : unit =
-        from.successors := to_ :: !from.successors
-        to_.predecessors := from :: !to_.predecessors
+        from.successors := Map.add to_.id to_ !from.successors
+        to_.predecessors := Map.add from.id from !to_.predecessors
 
     let RemoveEdge<'a when 'a : equality> (from: Node<'a>) (to_: Node<'a>) : unit =
-        let isDifferentInstance a b = LanguagePrimitives.PhysicalEquality a b |> not
-        from.successors := List.where (isDifferentInstance to_) !from.successors
-        to_.predecessors := List.where (isDifferentInstance from) !to_.predecessors
+        from.successors := Map.remove to_.id !from.successors
+        to_.predecessors := Map.remove from.id !from.successors
 
 module UndirectedGraph =
     type Node<'a> = {
         id: int;
         value: 'a;
         graph: Graph;
-        adjacents: Node<'a> list ref;
+        adjacents: Map<int,Node<'a>> ref;
     }
     and Graph() =
         let mutable count = 0
@@ -51,7 +50,7 @@ module UndirectedGraph =
                 id = count;
                 value = v;
                 graph = this;
-                adjacents = ref [];
+                adjacents = ref Map.empty;
             }
             count <- count + 1
             ret
@@ -60,13 +59,12 @@ module UndirectedGraph =
             List.init count (fun _ -> ref false)
 
     let MakeEdge<'a> (from: Node<'a>) (to_: Node<'a>) : unit =
-        from.adjacents := to_ :: !from.adjacents
-        to_.adjacents := from :: !to_.adjacents
+        from.adjacents := Map.add to_.id to_ !from.adjacents
+        to_.adjacents := Map.add from.id from !to_.adjacents
 
     let RemoveEdge<'a when 'a : equality> (from: Node<'a>) (to_: Node<'a>) : unit =
-        let isDifferentInstance a b = LanguagePrimitives.PhysicalEquality a b |> not
-        from.adjacents := List.where (isDifferentInstance to_) !from.adjacents
-        to_.adjacents := List.where (isDifferentInstance from) !to_.adjacents
+        from.adjacents := Map.remove to_.id !from.adjacents
+        to_.adjacents := Map.remove from.id !to_.adjacents
 
 module FlowGraph =
     [<StructuredFormatDisplayAttribute("{AsString}")>]
@@ -114,6 +112,7 @@ module FlowGraph =
                 ret <- ret + sprintf """%d [label="%A"];""" node.id node.value + "\n"
                 visited.Item node.id := true
                 for s in !node.successors do
+                    let s = s.Value
                     ret <- ret + sprintf "%d -> %d;\n" node.id s.id
                     if not !(visited.Item s.id) then
                         visit s
@@ -173,7 +172,7 @@ module FlowGraph =
                     List.append chain (visitEach ps)
             and visit (node: DirectedGraph.Node<_>) =
                 visited.Item node.id := true
-                node :: visitEach (!node.predecessors)
+                node :: visitEach (!node.predecessors |> Map.toList |> List.map snd)
             visit exit
 
         let solveEquation() =
@@ -185,7 +184,8 @@ module FlowGraph =
                 node.value.inVariables := Set.union node.value.uses (!node.value.outVariables - node.value.definitions)
                 node.value.outVariables := 
                     !node.successors
-                    |> List.map (fun s -> !s.value.inVariables)
+                    |> Map.toList
+                    |> List.map (fun (_,s) -> !s.value.inVariables)
                     |> Set.unionMany
 
                 if inVariables <> !node.value.inVariables || outVariables <> !node.value.outVariables
@@ -207,14 +207,6 @@ module Intereference =
         let mutable nodes = Map.empty
 
         let updateNodes (variables: Node list) =
-            let mapFolder nodes v =
-                match Map.tryFind v nodes with
-                | None -> 
-                    printfn "not found"
-                    let node = igraph.MakeNode v
-                    node,Map.add v node nodes
-                | Some(node) ->
-                    node,nodes
             let makeNode v =
                 match Map.tryFind v nodes with
                 | None ->
@@ -224,7 +216,7 @@ module Intereference =
                 | Some(node) -> node
             let variables = List.map makeNode variables
 
-            let rec makeEdges variables =
+            let rec makeEdges (variables: UndirectedGraph.Node<Node> list) =
                 match variables with
                 | [] -> ignore "do nothing"
                 | v :: variables ->
@@ -242,11 +234,75 @@ module Intereference =
             then
                 []
             else
-                visited := true 
-                let variables = Set.union node.value.definitions !node.value.outVariables |> Set.toList
-                let variables = updateNodes variables
-                List.map visit !node.successors
-                |> List.concat
-                |> List.append variables
+                visited := true
+                match node.value.inst with
+                | InstructionChoice.Move(dst,src) -> failwith "?"
+                | _ ->
+                    let variables = Set.union node.value.definitions !node.value.outVariables |> Set.toList
+                    let variables = updateNodes variables
+                    Map.toList !node.successors
+                    |> List.map snd
+                    |> List.map visit
+                    |> List.concat
+                    |> List.append variables
 
         visit liveness.entry
+
+    let analyzeIntereference' (liveness: FlowGraph.Liveness) : UndirectedGraph.Node<Node> list =
+        let igraph = new UndirectedGraph.Graph()
+
+
+        let liveMap =
+            let mutable liveMap = Map.empty
+            let visited = liveness.entry.graph.InitVisited
+            let rec visit (node: DirectedGraph.Node<FlowGraph.Node>) =
+                let visited = visited.Item node.id
+                visited := true
+                if not !visited
+                then
+                    for t in !node.value.outVariables do
+                        liveMap <- Map.add node.id t liveMap
+                    for s in !node.successors do
+                        visit s.Value
+            visit liveness.entry
+            liveMap
+
+        let mutable nodes = Map.empty
+        let getNode node =
+            match nodes.TryFind node with
+            | None ->
+                let ret = igraph.MakeNode node
+                nodes <- Map.add node ret nodes
+                ret
+            | Some(node) -> node
+        let mark lhs rhs =
+            if lhs <> rhs
+            then
+                UndirectedGraph.MakeEdge (getNode lhs) (getNode rhs)
+        let visited = liveness.entry.graph.InitVisited
+        let rec visit (node: DirectedGraph.Node<FlowGraph.Node>) =
+            let visited = visited.Item node.id
+            if not !visited
+            then
+                visited := true
+                match node.value.inst with
+                | InstructionChoice.Move(dst,src) -> 
+                    // for each live-out variables except src, 
+                    // add intereference edge to dst
+                    for liveOut in !node.value.outVariables do
+                        if liveOut <> src
+                        then
+                            mark dst liveOut
+                | _ ->
+                    for def in node.value.definitions do
+                        for liveOut in !node.value.outVariables do
+                            mark def liveOut
+
+                for s in !node.successors do
+                    visit s.Value
+
+        visit liveness.entry
+
+        nodes
+        |> Map.toList
+        |> List.map snd

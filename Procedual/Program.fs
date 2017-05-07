@@ -51,25 +51,27 @@ function main() : Int =
         for cfg in cfgs do
             System.IO.File.WriteAllText(sprintf "%A.dot" cfg.Key,sprintf "%A" cfg.Value)
 
-        let igraphs = Map.map (fun _ cfg -> Liveness.Intereference.analyzeIntereference cfg) cfgs
+        let igraphs = Map.map (fun _ cfg -> Liveness.Intereference.analyzeIntereference' cfg) cfgs
         for igraph in igraphs do
             let mutable visited = Map.empty 
             let name = igraph.Key
             let igraph = igraph.Value
 
-            let mutable text = ""
+            let mutable text = []
             let rec visit (node: Liveness.UndirectedGraph.Node<Liveness.Intereference.Node>) =
-                visited <- Map.add node.id true visited
-                text <- text + sprintf "%A;\n" node.value
-                for adj in !node.adjacents do
-                    match visited.TryFind adj.id with
-                    | Some(true) -> ignore "nothing"
-                    | Some(false)
-                    | None ->   
-                        text <- text + sprintf "%A -- %A;\n" node.value adj.value
+                match visited.TryFind node.id with
+                | Some(true) -> ignore "do nothing"
+                | _ -> 
+                    visited <- Map.add node.id true visited
+                    text <- sprintf "%A;" node.value :: text 
+                    for adj in !node.adjacents do
+                        let adj = adj.Value
+                        text <- sprintf "%A -- %A;" node.value adj.value :: text 
                         visit adj
-            visit igraph.Head
+            for node in igraph do
+                visit node
 
+            let text = List.distinct text |> String.concat "\n"
             System.IO.File.WriteAllText(sprintf "%A.igraph.dot" name,sprintf "graph G{\n%s\n}" text)
     | Failure(_,err,_) -> printfn "%A" err
     0 // 整数の終了コードを返します
