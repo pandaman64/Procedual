@@ -4,14 +4,14 @@ open Common
 
 type OpCode =
     BINOP of Op
-    | JAL
     | LOAD
     | STORE
     | ADDI of int
     | LDI of int
-    | LDLABEL of Temporary.Label
     | NOP
     | JUMP
+    | JAL
+    | JR
     | BEQ
 
 type Operation = {
@@ -62,6 +62,8 @@ with
             |> Operation
         | Move(dst,src) when dst = from -> Move(to_,src)
         | _ -> this
+    member this.EmitRealAssembly allocations =
+        failwith "これ実装できれば終わり！"
 
 type Emitter() =
     let mutable instructions = []
@@ -128,6 +130,17 @@ type Emitter() =
             |> Operation
             |> Emit
             t
+        | IR.Call(IR.LabelRef(l),xs) ->
+            let xs = choiceArgs 0 xs
+            {
+                op = JAL;
+                dst = Frame.calldefs
+                src = xs;
+                jump = Some([l]);
+            }
+            |> Operation
+            |> Emit
+            Frame.returnValue
         | IR.Call(f,xs) ->
             let xs = choiceArgs 0 xs
             {
@@ -152,17 +165,7 @@ type Emitter() =
             t
         | IR.Temp(t) -> t
         | IR.ExprSequence(_,_) -> failwith "linearization must remove ESeqs."
-        | IR.LabelRef(l) -> 
-            let t = Temporary.newTemporary()
-            {
-                op = LDLABEL(l);
-                dst = [t];
-                src = [];
-                jump = None;
-            }
-            |> Operation
-            |> Emit
-            t
+        | IR.LabelRef(l) -> failwith "no label ref can appear"
         | IR.Mem(e) -> 
             let t = Temporary.newTemporary()
             {
@@ -199,9 +202,18 @@ type Emitter() =
             |> Emit
         | IR.ExprStmt(_) -> failwith "i have no idea"
         | IR.MarkLabel(l) -> Label(l) |> Emit
-        | IR.Jump(l,labels) -> 
+        | IR.Jump(IR.LabelRef(l),labels) when labels = [l] ->
             {
                 op = JUMP;
+                dst = [];
+                src = [];
+                jump = Some([l]);
+            }
+            |> Operation
+            |> Emit
+        | IR.Jump(l,labels) -> 
+            {
+                op = JR;
                 dst = [];
                 src = [choiceExpr l];
                 jump = Some(labels)

@@ -54,7 +54,7 @@ let tryAllocateRegisters (nodes: Liveness.Intereference.Nodes) (precolored: Allo
     else
         Failure(spill)
 
-let rec allocateRegisters (frame: Frame.Frame) (insts: InstructionChoice.Instruction list) : Allocation =
+let rec allocateRegisters (frame: Frame.Frame) (insts: InstructionChoice.Instruction list) =
     let cfg = Liveness.FlowGraph.makeGraph insts
     let igraph = Liveness.Intereference.analyzeIntereference' cfg
     
@@ -64,7 +64,6 @@ let rec allocateRegisters (frame: Frame.Frame) (insts: InstructionChoice.Instruc
         |> Map.add frame.framePointer 6
 
     match tryAllocateRegisters igraph precolored with
-    | Success(alloc) -> alloc
     | Failure(spills) ->
         for t in spills do
             printf "%s " (frame.prettyPrintTemporary t)
@@ -115,3 +114,6 @@ let rec allocateRegisters (frame: Frame.Frame) (insts: InstructionChoice.Instruc
                     ]
         let insts = transform insts
         allocateRegisters frame insts
+    | Success(alloc) -> 
+        insts
+        |> List.map (fun inst -> inst.EmitRealAssembly alloc)

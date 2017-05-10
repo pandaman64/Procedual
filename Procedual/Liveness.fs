@@ -150,7 +150,10 @@ module FlowGraph =
                 match op.jump with
                 | None -> ignore "do nothing"
                 | Some(labels) -> 
-                    List.fold (fun () l -> DirectedGraph.MakeEdge f (Map.find l jumpTo)) () labels
+                    for l in labels do
+                        match jumpTo.TryFind l with
+                        | Some(t) -> DirectedGraph.MakeEdge f t
+                        | None -> ignore "jump to procedure"
             | _ -> ignore "do nothing"
 
         let entry,middle,exit = split nodes

@@ -95,8 +95,8 @@ function main() : Int =
             let insts = kv.Value
             let frame = (Map.find name decls).frame
 
-            for kv in RegisterAllocation.allocateRegisters frame insts do
-                printfn "%A -> %d" kv.Key kv.Value
+            for inst in RegisterAllocation.allocateRegisters frame insts do
+                printfn "%A" inst
             
     | Failure(_,err,_) -> printfn "%A" err
     0 // 整数の終了コードを返します
