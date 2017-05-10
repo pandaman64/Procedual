@@ -5,7 +5,7 @@ type Spill = Temporary.Temporary list
 
 type Result =
     Success of Allocation
-    | Fail of Spill
+    | Failure of Spill
 
 let tryAllocateRegisters (nodes: Liveness.Intereference.Nodes) (precolored: Allocation) =
     let comp (k: int) (n1: Liveness.Intereference.Node) (n2: Liveness.Intereference.Node) =
@@ -52,7 +52,66 @@ let tryAllocateRegisters (nodes: Liveness.Intereference.Nodes) (precolored: Allo
     then
         Success(colors)
     else
-        Fail(spill)
+        Failure(spill)
 
-let rec allocateRegisters (insts: InstructionChoice.Instruction list) : Allocation =
-    failwith "?"
+let rec allocateRegisters (frame: Frame.Frame) (insts: InstructionChoice.Instruction list) : Allocation =
+    let cfg = Liveness.FlowGraph.makeGraph insts
+    let igraph = Liveness.Intereference.analyzeIntereference' cfg
+    
+    let precolored = 
+        List.zip Frame.registers (List.init 8 id)
+        |> Map.ofList
+        |> Map.add frame.framePointer 6
+
+    match tryAllocateRegisters igraph precolored with
+    | Success(alloc) -> alloc
+    | Failure(spills) ->
+        for t in spills do
+            printf "%s " (frame.prettyPrintTemporary t)
+        printfn ""
+        printfn "regs: %A" Frame.registers
+        // do something for spills
+        let accesses = List.map (fun t -> t,frame.AllocLocal 1 true) spills |> Map.ofList
+        let spills = Set.ofList spills
+        let rec transform (insts: InstructionChoice.Instruction list) =
+            match insts with
+            | [] -> []
+            | inst :: rest ->
+                let useSpills = 
+                    Set.intersect spills inst.uses
+                    |> Set.toList
+                    |> List.map (fun t -> t,Temporary.newTemporary())
+                    |> Map.ofList
+                let defSpills = 
+                    Set.intersect spills inst.definitions
+                    |> Set.toList
+                    |> List.map (fun t -> t,Temporary.newTemporary())
+                    |> Map.ofList
+                let loadInsts =
+                    let folder insts orig temp =
+                        let stmt = IR.Move(IR.Temp(temp),frame.AccessVar (Map.find orig accesses))
+                        let inst = (new InstructionChoice.Emitter()).EmitStmt stmt
+                        List.append insts inst
+                    useSpills
+                    |> Map.fold folder []
+                let storeInsts =
+                    let folder insts orig temp =
+                        let stmt = IR.Move(frame.AccessVar (Map.find orig accesses),IR.Temp(temp))
+                        let inst = (new InstructionChoice.Emitter()).EmitStmt stmt
+                        List.append insts inst
+                    defSpills
+                    |> Map.fold folder []
+
+                List.concat
+                    [
+                        loadInsts;
+                        [
+                            inst
+                            |> Map.foldBack (fun orig temp inst -> inst.ReplaceUse orig temp) useSpills
+                            |> Map.foldBack (fun orig temp inst -> inst.ReplaceDef orig temp) defSpills
+                        ];
+                        storeInsts;
+                        transform rest
+                    ]
+        let insts = transform insts
+        allocateRegisters frame insts

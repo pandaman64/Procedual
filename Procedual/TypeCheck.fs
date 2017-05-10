@@ -32,7 +32,8 @@ type Declaration = {
     entryPoint: Temporary.Label;
     body: Canon.Block list;
     epilogueEntry: Temporary.Label;
-    type_: Type
+    frame: Frame.Frame;
+    type_: Type;
 }
 
 let checkType (t1: Type) (t2: Type) : unit =
@@ -222,6 +223,7 @@ let checkDecl (env: Map<Name,Type>) (accesses: Map<Name,Frame.Access> ref) (decl
             entryPoint = label;
             body = body;
             epilogueEntry = Temporary.newLabel();
+            frame = frame;
             type_ = funType
         }
 

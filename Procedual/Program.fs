@@ -40,14 +40,14 @@ function main() : Int =
                 for stmt in block do
                     printfn "%A" stmt
 
-        let decls = InstructionChoice.choiceInstructions decls
-        for decl in decls do
+        let instructions = InstructionChoice.choiceInstructions decls
+        for kv in instructions do
             printfn "---------------"
-            printfn "%A" decl.Key
-            for inst in decl.Value do
+            printfn "%A" kv.Key
+            for inst in kv.Value do
                 printfn "%A" inst
 
-        let cfgs = Map.map (fun _ insts -> Liveness.FlowGraph.makeGraph insts) decls
+        (*let cfgs = Map.map (fun _ insts -> Liveness.FlowGraph.makeGraph insts) decls
         for cfg in cfgs do
             System.IO.File.WriteAllText(sprintf "%A.dot" cfg.Key,sprintf "%A" cfg.Value)
 
@@ -84,7 +84,19 @@ function main() : Int =
 
             let colors = RegisterAllocation.tryAllocateRegisters igraph precolored
             printfn "%A's register allocation" name
-            printfn "%A" colors
+            printfn "%A" colors*)
+
+        let decls = 
+            decls
+            |> List.map (fun decl -> decl.name,decl)
+            |> Map.ofList
+        for kv in instructions do
+            let name = kv.Key
+            let insts = kv.Value
+            let frame = (Map.find name decls).frame
+
+            for kv in RegisterAllocation.allocateRegisters frame insts do
+                printfn "%A -> %d" kv.Key kv.Value
             
     | Failure(_,err,_) -> printfn "%A" err
     0 // 整数の終了コードを返します

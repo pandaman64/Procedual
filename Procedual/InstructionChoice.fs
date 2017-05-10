@@ -25,8 +25,45 @@ type Instruction =
     Operation of Operation
     | Label of Temporary.Label
     | Move of Temporary.Temporary * Temporary.Temporary // dst * src
+with
+    member this.definitions =
+        match this with
+        | Operation(op) -> op.dst
+        | Move(dst,_) -> [dst]
+        | Label(_) -> []
+        |> Set.ofList
+    member this.uses =
+        match this with
+        | Operation(op) -> op.src
+        | Move(_,src) -> [src]
+        | Label(_) -> []
+        |> Set.ofList
+    member this.ReplaceUse from to_ =
+        match this with
+        | Operation(op) ->
+            {
+                op = op.op;
+                dst = op.dst;
+                src = op.src |> List.map (fun t -> if t = from then to_ else t);
+                jump = op.jump;
+            }
+            |> Operation
+        | Move(dst,src) when src = from -> Move(dst,to_)
+        | _ -> this
+    member this.ReplaceDef from to_ =
+        match this with
+        | Operation(op) ->
+            {
+                op = op.op;
+                dst = op.dst |> List.map (fun t -> if t = from then to_ else t);
+                src = op.src;
+                jump = op.jump;
+            }
+            |> Operation
+        | Move(dst,src) when dst = from -> Move(to_,src)
+        | _ -> this
 
-type Emitter(decl: TypeCheck.Declaration) =
+type Emitter() =
     let mutable instructions = []
 
     let Emit inst =
@@ -240,7 +277,13 @@ type Emitter(decl: TypeCheck.Declaration) =
             Emit (Move(t,e))
         | IR.Move(_,_) -> failwith "destination of move must be memory"
 
-    member this.Instructions : Instruction list =
+    member this.EmitStmt stmt : Instruction list =
+        if List.isEmpty instructions
+        then
+            choiceStmt stmt
+        List.rev instructions
+
+    member this.EmitDecl (decl: TypeCheck.Declaration) : Instruction list =
         if List.isEmpty instructions
         then
             decl.body
@@ -259,5 +302,5 @@ type Emitter(decl: TypeCheck.Declaration) =
 
 let choiceInstructions (decls: TypeCheck.Declaration list) : Map<Name,Instruction list> =
     decls
-    |> List.map (fun decl -> decl.name,(new Emitter(decl)).Instructions) 
+    |> List.map (fun decl -> decl.name,(new Emitter()).EmitDecl decl) 
     |> Map.ofList

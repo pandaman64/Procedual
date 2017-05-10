@@ -52,6 +52,8 @@ type Frame(name,arguments : (int * bool) list,framePointer) =
 
     member this.Name : Var = name
 
+    member this.framePointer = framePointer
+
     member this.AccessVar access =
         match access with
         | InMemory(offset) -> IR.Mem(IR.BinaryOp(IR.Temp(framePointer),Add,IR.Const(offset)))
@@ -66,3 +68,13 @@ type Frame(name,arguments : (int * bool) list,framePointer) =
             InMemory(offset)
         else
             InRegister(Temporary.newTemporary())
+
+    member this.prettyPrintTemporary t =
+        match List.tryFindIndex ((=) t) registers with
+        | None -> 
+            if framePointer = t
+            then
+                "FP"
+            else
+                sprintf "%A" t
+        | Some(i) -> sprintf "r%d" i

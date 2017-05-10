@@ -78,18 +78,8 @@ module FlowGraph =
         outVariables: Set<Temporary.Temporary> ref;
     }
     with
-        member this.definitions =
-            match this.inst with
-            | IC.Operation(op) -> op.dst
-            | IC.Move(dst,_) -> [dst]
-            | IC.Label(_) -> []
-            |> Set.ofList
-        member this.uses =
-            match this.inst with
-            | IC.Operation(op) -> op.src
-            | IC.Move(_,src) -> [src]
-            | IC.Label(_) -> []
-            |> Set.ofList
+        member this.definitions = this.inst.definitions
+        member this.uses = this.inst.uses
         member this.AsString =
             let inVariables = 
                 !this.inVariables
