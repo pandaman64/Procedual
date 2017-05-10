@@ -82,7 +82,7 @@ function main() : Int =
                 List.zip Frame.registers (List.init 8 id)
                 |> Map.ofList
 
-            let colors = RegisterAllocation.allocateRegisters igraph precolored
+            let colors = RegisterAllocation.tryAllocateRegisters igraph precolored
             printfn "%A's register allocation" name
             printfn "%A" colors
             

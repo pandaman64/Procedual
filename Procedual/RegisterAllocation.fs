@@ -1,10 +1,13 @@
 ﻿module RegisterAllocation
 
-type Result =
-    Success of Map<Temporary.Temporary,int>
-    | Fail of Temporary.Temporary list
+type Allocation = Map<Temporary.Temporary,int>
+type Spill = Temporary.Temporary list
 
-let allocateRegisters (nodes: Liveness.Intereference.Nodes) (precolored: Map<Temporary.Temporary,int>) =
+type Result =
+    Success of Allocation
+    | Fail of Spill
+
+let tryAllocateRegisters (nodes: Liveness.Intereference.Nodes) (precolored: Allocation) =
     let comp (k: int) (n1: Liveness.Intereference.Node) (n2: Liveness.Intereference.Node) =
         let k1 = n1.adjacents.Value.Count
         let k2 = n2.adjacents.Value.Count
@@ -50,3 +53,6 @@ let allocateRegisters (nodes: Liveness.Intereference.Nodes) (precolored: Map<Tem
         Success(colors)
     else
         Fail(spill)
+
+let rec allocateRegisters (insts: InstructionChoice.Instruction list) : Allocation =
+    failwith "?"
