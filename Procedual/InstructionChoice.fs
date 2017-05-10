@@ -4,7 +4,7 @@ open Common
 
 type OpCode =
     BINOP of Op
-    | CALL
+    | JAL
     | LOAD
     | STORE
     | ADDI of int
@@ -92,10 +92,11 @@ type Emitter(decl: TypeCheck.Declaration) =
             |> Emit
             t
         | IR.Call(f,xs) ->
+            let xs = choiceArgs 0 xs
             {
-                op = CALL;
+                op = JAL;
                 dst = Frame.calldefs;
-                src = choiceExpr f :: choiceArgs 0 xs;
+                src = choiceExpr f :: xs;
                 jump = None
             }
             |> Operation
@@ -150,10 +151,11 @@ type Emitter(decl: TypeCheck.Declaration) =
         | IR.Sequence(_,_) -> failwith "linearization must remove Seqs."
         | IR.Nop -> failwith "linearization should remove Nops."
         | IR.ExprStmt(IR.Call(f,xs)) ->
+            let xs = choiceArgs 0 xs
             {
-                op = CALL;
+                op = JAL;
                 dst = Frame.calldefs;
-                src = choiceExpr f :: choiceArgs 0 xs;
+                src = choiceExpr f :: xs;
                 jump = None
             }
             |> Operation

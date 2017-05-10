@@ -25,8 +25,11 @@ let registers =
         // r7 = RA
         returnAddress;
     ]
-// Call instruction invalidates all registers
-let calldefs = registers
+// caller-save registers are r0(RV), r1, r2, r3, r6(SP), r7(RA)
+// callee-save registers are r4, r5
+let calldefs = 
+    [ 0; 1; 2; 3; 6; 7; ]
+    |> List.map (fun i -> registers.Item i)
 
 type Access = 
     InMemory of int // offset from fp

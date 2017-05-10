@@ -180,13 +180,28 @@ let checkDecl (env: Map<Name,Type>) (accesses: Map<Name,Frame.Access> ref) (decl
         let body = checkExpr env accesses frame body
         checkType body.type_ retType
 
-        let prologue = IR.MarkLabel(label)
+        let r4 = Temporary.newTemporary()
+        let r5 = Temporary.newTemporary()
+        let prologue = 
+            [
+                IR.MarkLabel(label);
+                // save callee-save registers
+                IR.Move(IR.Temp(r4),IR.Temp(Frame.registers.Item 4));
+                IR.Move(IR.Temp(r5),IR.Temp(Frame.registers.Item 5));
+            ]
+            |> List.fold (fun s s' -> IR.Sequence(s,s')) IR.Nop
         let body = IR.Move(IR.Temp(Frame.returnValue),IR.unEx body.expr)
         let epilogueEntry = Temporary.newLabel()
-        let epilogue = 
-            IR.Sequence(
-                IR.MarkLabel(epilogueEntry)
-                ,IR.Jump(IR.Temp(Frame.returnAddress),[(*empty is ok?*)]))
+        let epilogue =
+            [
+                IR.MarkLabel(epilogueEntry);
+                // restore callee-save registers
+                IR.Move(IR.Temp(Frame.registers.Item 4),IR.Temp(r4));
+                IR.Move(IR.Temp(Frame.registers.Item 5),IR.Temp(r5));
+                // jump back to callee
+                IR.Jump(IR.Temp(Frame.returnAddress),[(*empty is ok?*)]);
+            ] 
+            |> List.fold (fun s s' -> IR.Sequence(s,s')) IR.Nop
         
         let body = 
             let body = 
@@ -195,7 +210,12 @@ let checkDecl (env: Map<Name,Type>) (accesses: Map<Name,Frame.Access> ref) (decl
                 |> fun stmts -> Canon.toBasicBlock stmts epilogueEntry
                 |> fun stmts -> Canon.scheduleTrace stmts epilogueEntry
                 |> List.reduce List.append
-            List.append body [Canon.linearize epilogue]
+            List.concat
+                [
+                    [Canon.linearize prologue]
+                    body;
+                    [Canon.linearize epilogue];
+                ]
 
         {
             name = name;
