@@ -58,7 +58,7 @@ function main() : Int =
             let igraph = igraph.Value
 
             let mutable text = []
-            let rec visit (node: Liveness.UndirectedGraph.Node<Liveness.Intereference.Node>) =
+            let rec visit (node: Liveness.Intereference.Node) =
                 match visited.TryFind node.id with
                 | Some(true) -> ignore "do nothing"
                 | _ -> 
@@ -73,5 +73,18 @@ function main() : Int =
 
             let text = List.distinct text |> String.concat "\n"
             System.IO.File.WriteAllText(sprintf "%A.igraph.dot" name,sprintf "graph G{\n%s\n}" text)
+
+        for igraph in igraphs do
+            let name = igraph.Key
+            let igraph = igraph.Value
+
+            let precolored = 
+                List.zip Frame.registers (List.init 8 id)
+                |> Map.ofList
+
+            let colors = RegisterAllocation.allocateRegisters igraph precolored
+            printfn "%A's register allocation" name
+            for color in colors do
+                printfn "%A -> %A" color.Key color.Value
     | Failure(_,err,_) -> printfn "%A" err
     0 // 整数の終了コードを返します
