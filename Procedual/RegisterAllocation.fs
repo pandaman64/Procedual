@@ -1,5 +1,9 @@
 ﻿module RegisterAllocation
 
+type Result =
+    Success of Map<Temporary.Temporary,int>
+    | Fail of Temporary.Temporary list
+
 let allocateRegisters (nodes: Liveness.Intereference.Nodes) (precolored: Map<Temporary.Temporary,int>) =
     let comp (k: int) (n1: Liveness.Intereference.Node) (n2: Liveness.Intereference.Node) =
         let k1 = n1.adjacents.Value.Count
@@ -25,6 +29,7 @@ let allocateRegisters (nodes: Liveness.Intereference.Nodes) (precolored: Map<Tem
             
     let stack = List.rev sorted |> List.where (fun n -> not (precolored.ContainsKey n.value))
     let mutable colors = precolored
+    let mutable spill = []
 
     for node in stack do
         let mutable ks = List.init 8 id |> Set.ofList
@@ -35,8 +40,13 @@ let allocateRegisters (nodes: Liveness.Intereference.Nodes) (precolored: Map<Tem
 
         if ks.IsEmpty
         then
-            colors <- Map.add node.value -1 colors
+            spill <- node.value :: spill
+            //colors <- Map.add node.value -1 colors
         else
             colors <- Map.add node.value ks.MinimumElement colors
 
-    colors
+    if spill.IsEmpty
+    then
+        Success(colors)
+    else
+        Fail(spill)

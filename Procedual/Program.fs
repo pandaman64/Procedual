@@ -84,12 +84,7 @@ function main() : Int =
 
             let colors = RegisterAllocation.allocateRegisters igraph precolored
             printfn "%A's register allocation" name
-            for color in colors do
-                if color.Value < 0
-                then
-                    ignore (System.Console.ReadLine())
-                printfn "%A -> %A" color.Key color.Value
-
+            printfn "%A" colors
             
     | Failure(_,err,_) -> printfn "%A" err
     0 // 整数の終了コードを返します
