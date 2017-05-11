@@ -115,5 +115,18 @@ let rec allocateRegisters (frame: Frame.Frame) (insts: InstructionChoice.Instruc
         let insts = transform insts
         allocateRegisters frame insts
     | Success(alloc) -> 
+        printfn "FP = %A" frame.framePointer
+        let alloc = Map.fold (fun alloc t x -> Map.add t x alloc) alloc precolored
+        let resolver t =
+            match List.tryFindIndex ((=) t) Frame.registers with
+            | Some(i) -> i
+            | None -> 
+                match Map.tryFind t alloc with
+                | Some(i) -> i
+                | None -> 
+                    printfn "register not found"
+                    -1
+            |> sprintf "r%d"
+        //let resolver t = sprintf "%A" t 
         insts
-        |> List.map (fun inst -> inst.EmitRealAssembly alloc)
+        |> List.map (fun inst -> inst.EmitRealAssembly resolver)

@@ -95,8 +95,8 @@ function main() : Int =
             let insts = kv.Value
             let frame = (Map.find name decls).frame
 
-            for inst in RegisterAllocation.allocateRegisters frame insts do
-                printfn "%A" inst
+            let insts = RegisterAllocation.allocateRegisters frame insts
+            System.IO.File.WriteAllLines(sprintf "%A.asm" name,insts |> List.toArray)
             
     | Failure(_,err,_) -> printfn "%A" err
     0 // 整数の終了コードを返します

@@ -54,6 +54,8 @@ type Frame(name,arguments : (int * bool) list,framePointer) =
 
     member this.framePointer = framePointer
 
+    member this.frameSize = currentOffset
+
     member this.AccessVar access =
         match access with
         | InMemory(offset) -> IR.Mem(IR.BinaryOp(IR.Temp(framePointer),Add,IR.Const(offset)))

@@ -9,12 +9,12 @@ type OpCode =
     | SETSP of Frame.Frame
     | ADDI of Temporary.Temporary * int
     | LDI of Temporary.Temporary * int
-    | NOP
     | JUMP of Temporary.Label
     | JR of Temporary.Temporary
     | JAL of Temporary.Label
     | JALR of Temporary.Temporary
     | BEQ of Temporary.Temporary * Temporary.Label
+    | NOP
 
 type Operation = {
     op: OpCode;
@@ -64,12 +64,38 @@ with
             |> Operation
         | Move(dst,src) when dst = from -> Move(to_,src)
         | _ -> this
-    member this.EmitRealAssembly allocations =
+    member this.EmitRealAssembly resolver =
         match this with
-        | Move(dst,src) -> sprintf "MV %A,%A" dst src
+        | Move(dst,src) -> sprintf "MV %s,%s" (resolver dst) (resolver src)
         | Label(l) -> sprintf "%A:" l
         | Operation(op) ->
-            failwith "?" 
+            match op.op with
+            | LOAD(dst,src) -> sprintf "LD %s,%s" (resolver dst) (resolver src)
+            | STORE(dst,src) -> sprintf "ST %s,%s" (resolver dst) (resolver src)
+            | SETSP(frame) -> sprintf "ADDI r6,%d" frame.frameSize
+            | ADDI(dst,x) -> sprintf "ADDI %s,%d" (resolver dst) x
+            | LDI(dst,x) -> sprintf "LDI %s,%d" (resolver dst) x
+            | JUMP(l) -> sprintf "J %A" l
+            | JR(t) -> sprintf "JR %s" (resolver t)
+            | JAL(l) -> sprintf "JAL %A" l
+            | JALR(t) -> sprintf "JALR %s" (resolver t)
+            | BEQ(t,l) -> sprintf "BEQ %s,%A" (resolver t) l
+            | NOP -> sprintf ""
+            | BINOP(dst,op,src) ->
+                let op =
+                    match op with
+                    | Add -> "ADD" 
+                    | Subtract -> "SUB"
+                    | Multiply -> "MUL"
+                    | Divide -> "DIV"
+                    | Equal -> "EQ"
+                    | NotEqual -> "NEQ"
+                    | GreaterThan -> "GT"
+                    | GreaterThanOrEq -> "GTE"
+                    | LessThan -> "LT"
+                    | LessThanOrEq -> "LTE"
+                    | Assign -> failwith "unreacheable"
+                sprintf "%s %s,%s" op (resolver dst) (resolver src)
 
 type Emitter() =
     let mutable instructions = []
