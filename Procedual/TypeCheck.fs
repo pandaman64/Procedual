@@ -166,7 +166,8 @@ let checkDecl (env: Map<Name,Type>) (accesses: Map<Name,Frame.Access> ref) (decl
 
         let frame =
             let name = Var(name.AsString)
-            let arguments = arguments |> List.map (fun arg -> arg.signature.Size,true)
+            // currently no spill are needed
+            let arguments = arguments |> List.map (fun arg -> arg.signature.Size,false)
             //let framePointer = Frame.stackPointer
             let framePointer = Temporary.newTemporary()
             Frame.Frame(name,arguments,framePointer)
