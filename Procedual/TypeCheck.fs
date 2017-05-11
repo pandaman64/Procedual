@@ -186,11 +186,18 @@ let checkDecl (env: Map<Name,Type>) (accesses: Map<Name,Frame.Access> ref) (decl
         let r5 = Temporary.newTemporary()
         let prologue = 
             [
-                IR.MarkLabel(label);
+                // declare entrypoint
+                [ IR.MarkLabel(label) ];
+                // assign arguments
+                List.zip frame.arguments (List.truncate frame.arguments.Length Frame.registers)
+                |> List.map (fun (arg,param) -> IR.Move(frame.AccessVar arg,IR.Temp(param)))
                 // save callee-save registers
-                IR.Move(IR.Temp(r4),IR.Temp(Frame.registers.Item 4));
-                IR.Move(IR.Temp(r5),IR.Temp(Frame.registers.Item 5));
+                [
+                    IR.Move(IR.Temp(r4),IR.Temp(Frame.registers.Item 4));
+                    IR.Move(IR.Temp(r5),IR.Temp(Frame.registers.Item 5));
+                ];
             ]
+            |> List.concat
             |> List.fold (fun s s' -> IR.Sequence(s,s')) IR.Nop
         let body = IR.Move(IR.Temp(Frame.returnValue),IR.unEx body.expr)
         let epilogueEntry = Temporary.newLabel()

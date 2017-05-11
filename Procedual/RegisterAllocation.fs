@@ -61,7 +61,6 @@ let rec allocateRegisters (frame: Frame.Frame) (insts: InstructionChoice.Instruc
     let precolored = 
         List.zip Frame.registers (List.init 8 id)
         |> Map.ofList
-        |> Map.add frame.framePointer 6
 
     match tryAllocateRegisters igraph precolored with
     | Failure(spills) ->
@@ -89,14 +88,14 @@ let rec allocateRegisters (frame: Frame.Frame) (insts: InstructionChoice.Instruc
                 let loadInsts =
                     let folder insts orig temp =
                         let stmt = IR.Move(IR.Temp(temp),frame.AccessVar (Map.find orig accesses))
-                        let inst = (new InstructionChoice.Emitter()).EmitStmt stmt
+                        let inst = (new InstructionChoice.Emitter(frame)).EmitStmt stmt
                         List.append insts inst
                     useSpills
                     |> Map.fold folder []
                 let storeInsts =
                     let folder insts orig temp =
                         let stmt = IR.Move(frame.AccessVar (Map.find orig accesses),IR.Temp(temp))
-                        let inst = (new InstructionChoice.Emitter()).EmitStmt stmt
+                        let inst = (new InstructionChoice.Emitter(frame)).EmitStmt stmt
                         List.append insts inst
                     defSpills
                     |> Map.fold folder []

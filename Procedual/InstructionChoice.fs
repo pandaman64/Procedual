@@ -6,7 +6,6 @@ type OpCode =
     BINOP of Temporary.Temporary * Op * Temporary.Temporary
     | LOAD of Temporary.Temporary * Temporary.Temporary
     | STORE of Temporary.Temporary * Temporary.Temporary
-    | SETSP of Frame.Frame
     | ADDI of Temporary.Temporary * int
     | LDI of Temporary.Temporary * int
     | JUMP of Temporary.Label
@@ -30,7 +29,6 @@ with
         | BNZ(t,l) -> BNZ(replace t,l)
         | JUMP(_)         
         | JAL(_)
-        | SETSP(_)
         | NOP -> this
 type Operation = {
     op: OpCode;
@@ -88,14 +86,13 @@ with
             match op.op with
             | LOAD(dst,src) -> sprintf "LD %s,%s" (resolver dst) (resolver src)
             | STORE(dst,src) -> sprintf "ST %s,%s" (resolver dst) (resolver src)
-            | SETSP(frame) -> sprintf "ADDI r6,%d" frame.frameSize
             | ADDI(dst,x) -> sprintf "ADDI %s,%d" (resolver dst) x
             | LDI(dst,x) -> sprintf "LDI %s,%d" (resolver dst) x
             | JUMP(l) -> sprintf "J %A" l
             | JR(t) -> sprintf "JR %s" (resolver t)
             | JAL(l) -> sprintf "JAL %A" l
             | JALR(t) -> sprintf "JALR %s" (resolver t)
-            | BNZ(t,l) -> sprintf "BEQ %s,%A" (resolver t) l
+            | BNZ(t,l) -> sprintf "BNZ %s,%A" (resolver t) l
             | NOP -> sprintf ""
             | BINOP(dst,op,src) ->
                 let op =
@@ -113,7 +110,8 @@ with
                     | Assign -> failwith "unreacheable"
                 sprintf "%s %s,%s" op (resolver dst) (resolver src)
 
-type Emitter() =
+type Emitter(frame: Frame.Frame) =
+    // save instructions in REVERSE order
     let mutable instructions = []
 
     let Emit inst =
@@ -207,6 +205,17 @@ type Emitter() =
                 op = LDI(t,x);
                 dst = [t];
                 src = [];
+                jump = None;
+            }
+            |> Operation
+            |> Emit
+            t
+        | IR.Temp(t) when t = frame.framePointer ->
+            Emit (Move(t,Frame.stackPointer))
+            {
+                op = ADDI(t,frame.frameSize);
+                dst = [t];
+                src = [t];
                 jump = None;
             }
             |> Operation
@@ -377,7 +386,7 @@ type Emitter() =
             [
                 Move(frame.framePointer,Frame.stackPointer);
                 {
-                    op = SETSP(frame);
+                    op = ADDI(Frame.stackPointer,frame.frameSize);
                     dst = [ Frame.stackPointer ];
                     src = [ Frame.stackPointer ];
                     jump = None;
@@ -421,5 +430,5 @@ type Emitter() =
 
 let choiceInstructions (decls: TypeCheck.Declaration list) : Map<Name,Instruction list> =
     decls
-    |> List.map (fun decl -> decl.name,(new Emitter()).EmitDecl decl) 
+    |> List.map (fun decl -> decl.name,(new Emitter(decl.frame)).EmitDecl decl) 
     |> Map.ofList

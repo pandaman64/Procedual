@@ -54,7 +54,7 @@ type Frame(name,arguments : (int * bool) list,framePointer) =
 
     member this.framePointer = framePointer
 
-    member this.frameSize = currentOffset
+    member this.frameSize = 128
 
     member this.AccessVar access =
         match access with
@@ -67,7 +67,11 @@ type Frame(name,arguments : (int * bool) list,framePointer) =
         then
             let offset = currentOffset
             currentOffset <- currentOffset + size
-            InMemory(offset)
+            if currentOffset > this.frameSize
+            then
+                failwith "frame size exceeded"
+            else
+                InMemory(offset)
         else
             InRegister(Temporary.newTemporary())
 
