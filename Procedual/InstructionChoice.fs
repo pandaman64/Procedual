@@ -3,16 +3,18 @@
 open Common
 
 type OpCode =
-    BINOP of Op
-    | LOAD
-    | STORE
-    | ADDI of int
-    | LDI of int
+    BINOP of Temporary.Temporary * Op * Temporary.Temporary
+    | LOAD of Temporary.Temporary * Temporary.Temporary
+    | STORE of Temporary.Temporary * Temporary.Temporary
+    | SETSP of Frame.Frame
+    | ADDI of Temporary.Temporary * int
+    | LDI of Temporary.Temporary * int
     | NOP
-    | JUMP
-    | JAL
-    | JR
-    | BEQ
+    | JUMP of Temporary.Label
+    | JR of Temporary.Temporary
+    | JAL of Temporary.Label
+    | JALR of Temporary.Temporary
+    | BEQ of Temporary.Temporary * Temporary.Label
 
 type Operation = {
     op: OpCode;
@@ -63,7 +65,11 @@ with
         | Move(dst,src) when dst = from -> Move(to_,src)
         | _ -> this
     member this.EmitRealAssembly allocations =
-        failwith "これ実装できれば終わり！"
+        match this with
+        | Move(dst,src) -> sprintf "MV %A,%A" dst src
+        | Label(l) -> sprintf "%A:" l
+        | Operation(op) ->
+            failwith "?" 
 
 type Emitter() =
     let mutable instructions = []
@@ -80,7 +86,7 @@ type Emitter() =
             let t = Temporary.newTemporary()
             Emit (Move(t,lhs))
             {
-                op = ADDI(x);
+                op = ADDI(t,x);
                 dst = [t];
                 src = [t];
                 jump = None
@@ -95,7 +101,7 @@ type Emitter() =
             let t = Temporary.newTemporary()
             Emit (Move(t,rhs))
             {
-                op = ADDI(x);
+                op = ADDI(t,x);
                 dst = [t];
                 src = [t];
                 jump = None
@@ -108,7 +114,7 @@ type Emitter() =
             let t = Temporary.newTemporary()
             Emit (Move(t,lhs))
             {
-                op = ADDI(-x);
+                op = ADDI(t,-x);
                 dst = [t];
                 src = [t];
                 jump = None
@@ -122,7 +128,7 @@ type Emitter() =
             let t = Temporary.newTemporary()
             Emit (Move(t,lhs))
             {
-                op = BINOP(op);
+                op = BINOP(t,op,rhs);
                 dst = [t];
                 src = [t; rhs];
                 jump = None;
@@ -133,7 +139,7 @@ type Emitter() =
         | IR.Call(IR.LabelRef(l),xs) ->
             let xs = choiceArgs 0 xs
             {
-                op = JAL;
+                op = JAL(l);
                 dst = Frame.calldefs
                 src = xs;
                 jump = Some([l]);
@@ -142,11 +148,12 @@ type Emitter() =
             |> Emit
             Frame.returnValue
         | IR.Call(f,xs) ->
+            let f = choiceExpr f
             let xs = choiceArgs 0 xs
             {
-                op = JAL;
+                op = JALR(f);
                 dst = Frame.calldefs;
-                src = choiceExpr f :: xs;
+                src = f :: xs;
                 jump = None
             }
             |> Operation
@@ -155,7 +162,7 @@ type Emitter() =
         | IR.Const(x) ->
             let t = Temporary.newTemporary()
             {
-                op = LDI(x);
+                op = LDI(t,x);
                 dst = [t];
                 src = [];
                 jump = None;
@@ -168,10 +175,11 @@ type Emitter() =
         | IR.LabelRef(l) -> failwith "no label ref can appear"
         | IR.Mem(e) -> 
             let t = Temporary.newTemporary()
+            let e = choiceExpr e
             {
-                op = LOAD;
+                op = LOAD(t,e);
                 dst = [t];
-                src = [choiceExpr e];
+                src = [e];
                 jump = None;
             }
             |> Operation
@@ -190,13 +198,24 @@ type Emitter() =
         match stmt with
         | IR.Sequence(_,_) -> failwith "linearization must remove Seqs."
         | IR.Nop -> failwith "linearization should remove Nops."
-        | IR.ExprStmt(IR.Call(f,xs)) ->
+        | IR.ExprStmt(IR.Call(IR.LabelRef(l),xs)) ->
             let xs = choiceArgs 0 xs
             {
-                op = JAL;
+                op = JAL(l);
                 dst = Frame.calldefs;
-                src = choiceExpr f :: xs;
-                jump = None
+                src = xs;
+                jump = Some([l]);
+            }
+            |> Operation
+            |> Emit
+        | IR.ExprStmt(IR.Call(f,xs)) ->
+            let f = choiceExpr f
+            let xs = choiceArgs 0 xs
+            {
+                op = JALR(f);
+                dst = Frame.calldefs;
+                src = f :: xs;
+                jump = Some([])
             }
             |> Operation
             |> Emit
@@ -204,82 +223,92 @@ type Emitter() =
         | IR.MarkLabel(l) -> Label(l) |> Emit
         | IR.Jump(IR.LabelRef(l),labels) when labels = [l] ->
             {
-                op = JUMP;
+                op = JUMP(l);
                 dst = [];
                 src = [];
                 jump = Some([l]);
             }
             |> Operation
             |> Emit
-        | IR.Jump(l,labels) -> 
+        | IR.Jump(l,labels) ->
+            let l = choiceExpr l
             {
-                op = JR;
+                op = JR(l);
                 dst = [];
-                src = [choiceExpr l];
+                src = [l];
                 jump = Some(labels)
             }
             |> Operation
             |> Emit
         | IR.ConditionalJump(cond,t,f) ->
             // assume program falls through else-clause
+            let cond = choiceExpr cond
             {
-                op = BEQ;
+                op = BEQ(cond,t);
                 dst = [];
-                src = [choiceExpr cond];
+                src = [cond];
                 jump = Some([t])
             }
             |> Operation
             |> Emit
         | IR.Move(IR.Mem(dst),IR.Mem(src)) ->
             let t = Temporary.newTemporary()
+            let src = choiceExpr src
             {
-                op = LOAD;
+                op = LOAD(t,src);
                 dst = [t];
-                src = [choiceExpr src];
+                src = [src];
                 jump = None;
             }
             |> Operation
             |> Emit
+            let dst = choiceExpr dst
             {
-                op = STORE;
+                op = STORE(dst,t);
                 dst = [];
-                src = [choiceExpr dst; t];
+                src = [dst; t];
                 jump = None;
             }
             |> Operation
             |> Emit
         | IR.Move(IR.Mem(IR.Temp(t)),value) ->
+            let value = choiceExpr value
             {
-                op = STORE;
+                op = STORE(t,value);
                 dst = [];
-                src = [t; choiceExpr value];
+                src = [t; value];
                 jump = None
             }
             |> Operation
             |> Emit
         | IR.Move(IR.Mem(dst),src) ->
+            let dst = choiceExpr dst
+            let src = choiceExpr src
             {
-                op = STORE;
+                op = STORE(dst,src);
                 dst = [];
-                src = [choiceExpr dst; choiceExpr src];
+                src = [dst; src];
                 jump = None
             }
             |> Operation
             |> Emit
         | IR.Move(dst,IR.Mem(IR.Temp(src))) ->
+            let dst = choiceExpr dst
             {
-                op = LOAD;
-                dst = [choiceExpr dst];
+                op = LOAD(dst,src);
+                dst = [dst];
                 src = [src];
                 jump = None;
             }
             |> Operation
             |> Emit
         | IR.Move(dst,IR.Mem(src)) ->
+            let dst = choiceExpr dst
+            let src = choiceExpr src
             {
-                op = LOAD;
-                dst = [choiceExpr dst];
-                src = [choiceExpr src];
+                op = LOAD(dst,src);
+                dst = [dst];
+                src = [src];
                 jump = None;
             }
             |> Operation
@@ -295,12 +324,45 @@ type Emitter() =
             choiceStmt stmt
         List.rev instructions
 
+    member this.InsertStackPointerOperation (frame: Frame.Frame) : unit =
+        let entry,body,exit = 
+            let entry,body = List.splitAt 1 instructions
+            let body,exit = List.splitAt (body.Length - 1) body
+            entry,body,exit
+
+        let set =
+            [
+                Move(frame.framePointer,Frame.stackPointer);
+                {
+                    op = SETSP(frame);
+                    dst = [ Frame.stackPointer ];
+                    src = [ Frame.stackPointer ];
+                    jump = None;
+                }
+                |> Operation;
+            ]
+        let reset =
+            [
+                Move(Frame.stackPointer,frame.framePointer);
+            ]
+        instructions <-
+            List.concat [
+                entry;
+                set;
+                body;
+                reset;
+                exit;
+            ]
+
     member this.EmitDecl (decl: TypeCheck.Declaration) : Instruction list =
         if List.isEmpty instructions
         then
             decl.body
             |> List.map (fun block -> for stmt in block do choiceStmt stmt)
             |> ignore
+
+            this.InsertStackPointerOperation decl.frame
+
             // mark special registers used after exit
             instructions <- 
                 Operation{
