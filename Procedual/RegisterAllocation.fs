@@ -124,8 +124,7 @@ let rec allocateRegisters (frame: Frame.Frame) (insts: InstructionChoice.Instruc
                 match Map.tryFind t alloc with
                 | Some(i) -> i
                 | None -> 
-                    printfn "register not found"
-                    -1
+                    failwith "register not found"
             |> sprintf "r%d"
         //let resolver t = sprintf "%A" t 
         insts

@@ -36,9 +36,8 @@ function main() : Int =
             printfn "%A" decl.name
             printfn "\nbasic blocks"
             let blocks = decl.body
-            for block in blocks do
-                for stmt in block do
-                    printfn "%A" stmt
+            let stmts = List.reduce List.append blocks
+            System.IO.File.WriteAllLines(sprintf "%A.ir" decl.name,stmts |> List.map (sprintf "%A") |> List.toArray)
 
         let instructions = InstructionChoice.choiceInstructions decls
         for kv in instructions do

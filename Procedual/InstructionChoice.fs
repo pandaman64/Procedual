@@ -15,7 +15,23 @@ type OpCode =
     | JALR of Temporary.Temporary
     | BEQ of Temporary.Temporary * Temporary.Label
     | NOP
-
+with
+    member this.Replace from to_ =
+        let replace x = 
+            if x = from then to_ else x
+        match this with
+        | BINOP(lhs,op,rhs) -> BINOP(replace lhs,op,replace rhs)
+        | LOAD(dst,src) -> LOAD(replace dst,replace src)
+        | STORE(dst,src) -> STORE(replace dst,replace src)
+        | ADDI(dst,x) -> ADDI(replace dst,x)
+        | LDI(dst,x) -> LDI(replace dst,x)
+        | JR(t) -> JR(replace t)
+        | JALR(t) -> JALR(replace t)
+        | BEQ(t,l) -> BEQ(replace t,l)
+        | JUMP(_)         
+        | JAL(_)
+        | SETSP(_)
+        | NOP -> this
 type Operation = {
     op: OpCode;
     dst: Temporary.Temporary list
@@ -44,7 +60,7 @@ with
         match this with
         | Operation(op) ->
             {
-                op = op.op;
+                op = op.op.Replace from to_;
                 dst = op.dst;
                 src = op.src |> List.map (fun t -> if t = from then to_ else t);
                 jump = op.jump;
@@ -56,7 +72,7 @@ with
         match this with
         | Operation(op) ->
             {
-                op = op.op;
+                op = op.op.Replace from to_;
                 dst = op.dst |> List.map (fun t -> if t = from then to_ else t);
                 src = op.src;
                 jump = op.jump;
