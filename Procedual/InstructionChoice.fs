@@ -367,10 +367,11 @@ type Emitter() =
         List.rev instructions
 
     member this.InsertStackPointerOperation (frame: Frame.Frame) : unit =
-        let entry,body,exit = 
-            let entry,body = List.splitAt 1 instructions
-            let body,exit = List.splitAt (body.Length - 1) body
-            entry,body,exit
+        // NOTE instructions are REVERSED
+        let exit,body,entry = 
+            let exit,body = List.splitAt 1 instructions
+            let body,entry = List.splitAt (body.Length - 1) body
+            exit,body,entry
 
         let set =
             [
@@ -383,17 +384,19 @@ type Emitter() =
                 }
                 |> Operation;
             ]
+            |> List.rev
         let reset =
             [
                 Move(Frame.stackPointer,frame.framePointer);
             ]
+            |> List.rev
         instructions <-
             List.concat [
-                entry;
-                set;
-                body;
-                reset;
                 exit;
+                reset;
+                body;
+                set;
+                entry;
             ]
 
     member this.EmitDecl (decl: TypeCheck.Declaration) : Instruction list =

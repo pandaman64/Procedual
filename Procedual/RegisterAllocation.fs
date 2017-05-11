@@ -70,8 +70,8 @@ let rec allocateRegisters (frame: Frame.Frame) (insts: InstructionChoice.Instruc
         printfn ""
         printfn "regs: %A" Frame.registers
         // do something for spills
-        let accesses = List.map (fun t -> t,frame.AllocLocal 1 true) spills |> Map.ofList
         let spills = Set.ofList spills
+        let accesses = List.map (fun t -> t,frame.AllocLocal 1 true) (Set.toList spills) |> Map.ofList
         let rec transform (insts: InstructionChoice.Instruction list) =
             match insts with
             | [] -> []
