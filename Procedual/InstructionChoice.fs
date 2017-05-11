@@ -13,7 +13,7 @@ type OpCode =
     | JR of Temporary.Temporary
     | JAL of Temporary.Label
     | JALR of Temporary.Temporary
-    | BEQ of Temporary.Temporary * Temporary.Label
+    | BNZ of Temporary.Temporary * Temporary.Label
     | NOP
 with
     member this.Replace from to_ =
@@ -27,7 +27,7 @@ with
         | LDI(dst,x) -> LDI(replace dst,x)
         | JR(t) -> JR(replace t)
         | JALR(t) -> JALR(replace t)
-        | BEQ(t,l) -> BEQ(replace t,l)
+        | BNZ(t,l) -> BNZ(replace t,l)
         | JUMP(_)         
         | JAL(_)
         | SETSP(_)
@@ -95,7 +95,7 @@ with
             | JR(t) -> sprintf "JR %s" (resolver t)
             | JAL(l) -> sprintf "JAL %A" l
             | JALR(t) -> sprintf "JALR %s" (resolver t)
-            | BEQ(t,l) -> sprintf "BEQ %s,%A" (resolver t) l
+            | BNZ(t,l) -> sprintf "BEQ %s,%A" (resolver t) l
             | NOP -> sprintf ""
             | BINOP(dst,op,src) ->
                 let op =
@@ -286,7 +286,7 @@ type Emitter() =
             // assume program falls through else-clause
             let cond = choiceExpr cond
             {
-                op = BEQ(cond,t);
+                op = BNZ(cond,t);
                 dst = [];
                 src = [cond];
                 jump = Some([t])
