@@ -118,13 +118,13 @@ let rec allocateRegisters (frame: Frame.Frame) (insts: InstructionChoice.Instruc
         let alloc = Map.fold (fun alloc t x -> Map.add t x alloc) alloc precolored
         let resolver t =
             match List.tryFindIndex ((=) t) Frame.registers with
-            | Some(i) -> i
+            | Some(i) -> sprintf "r%d as %A" i t
             | None -> 
                 match Map.tryFind t alloc with
-                | Some(i) -> i
+                | Some(i) -> sprintf "r%d as %A" i t
                 | None -> 
-                    failwith "register not found"
-            |> sprintf "r%d"
+                    sprintf "<404> as %A" t
+          
         //let resolver t = sprintf "%A" t 
         insts
         |> List.map (fun inst -> inst.EmitRealAssembly resolver)

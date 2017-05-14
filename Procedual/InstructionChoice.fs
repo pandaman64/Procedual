@@ -375,47 +375,12 @@ type Emitter(frame: Frame.Frame) =
             choiceStmt stmt
         List.rev instructions
 
-    member this.InsertStackPointerOperation (frame: Frame.Frame) : unit =
-        // NOTE instructions are REVERSED
-        let exit,body,entry = 
-            let exit,body = List.splitAt 1 instructions
-            let body,entry = List.splitAt (body.Length - 1) body
-            exit,body,entry
-
-        let set =
-            [
-                Move(frame.framePointer,Frame.stackPointer);
-                {
-                    op = ADDI(Frame.stackPointer,frame.frameSize);
-                    dst = [ Frame.stackPointer ];
-                    src = [ Frame.stackPointer ];
-                    jump = None;
-                }
-                |> Operation;
-            ]
-            |> List.rev
-        let reset =
-            [
-                Move(Frame.stackPointer,frame.framePointer);
-            ]
-            |> List.rev
-        instructions <-
-            List.concat [
-                exit;
-                reset;
-                body;
-                set;
-                entry;
-            ]
-
     member this.EmitDecl (decl: TypeCheck.Declaration) : Instruction list =
         if List.isEmpty instructions
         then
             decl.body
             |> List.map (fun block -> for stmt in block do choiceStmt stmt)
             |> ignore
-
-            this.InsertStackPointerOperation decl.frame
 
             // mark special registers used after exit
             instructions <- 

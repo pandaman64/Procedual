@@ -188,6 +188,11 @@ let checkDecl (env: Map<Name,Type>) (accesses: Map<Name,Frame.Access> ref) (decl
             [
                 // declare entrypoint
                 [ IR.MarkLabel(label) ];
+                // save stack pointer as frame pointer and increment 
+                [
+                    IR.Move(IR.Temp(frame.framePointer),IR.Temp(Frame.stackPointer));
+                    IR.Move(IR.Temp(Frame.stackPointer),IR.BinaryOp(IR.Temp(Frame.stackPointer),Add,IR.Const(frame.frameSize)))
+                ];
                 // assign arguments
                 List.zip frame.arguments (List.truncate frame.arguments.Length Frame.registers)
                 |> List.map (fun (arg,param) -> IR.Move(frame.AccessVar arg,IR.Temp(param)))
@@ -207,6 +212,8 @@ let checkDecl (env: Map<Name,Type>) (accesses: Map<Name,Frame.Access> ref) (decl
                 // restore callee-save registers
                 IR.Move(IR.Temp(Frame.registers.Item 4),IR.Temp(r4));
                 IR.Move(IR.Temp(Frame.registers.Item 5),IR.Temp(r5));
+                // restore stack pointer
+                IR.Move(IR.Temp(Frame.stackPointer),IR.Temp(frame.framePointer))
                 // jump back to callee
                 IR.Jump(IR.Temp(Frame.returnAddress),[(*empty is ok?*)]);
             ] 
