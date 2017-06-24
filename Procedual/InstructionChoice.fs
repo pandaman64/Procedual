@@ -284,7 +284,9 @@ type Emitter(frame: Frame.Frame) =
             }
             |> Operation
             |> Emit "Call by function value (stmt)"
-        | IR.ExprStmt(_) -> failwith "i have no idea"
+        | IR.ExprStmt(expr) -> 
+            choiceExpr expr
+            |> ignore
         | IR.MarkLabel(l) -> Label(l) |> Emit "marking label"
         | IR.Jump(IR.LabelRef(l),labels) when labels = [l] ->
             {
