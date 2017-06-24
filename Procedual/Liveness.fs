@@ -73,7 +73,7 @@ module UndirectedGraph =
 module FlowGraph =
     [<StructuredFormatDisplayAttribute("{AsString}")>]
     type Node = {
-        inst: IC.Instruction;
+        inst: IC.InstructionWithComment;
         inVariables: Set<Temporary.Temporary> ref;
         outVariables: Set<Temporary.Temporary> ref;
     }
@@ -91,7 +91,7 @@ module FlowGraph =
                 |> Set.toList
                 |> List.map (sprintf "%A")
                 |> String.concat "\\n"
-            sprintf "%A\\ninVariables:\\n%s\\noutVariables\\n%s" this.inst inVariables outVariables
+            sprintf "%s\\ninVariables:\\n%s\\noutVariables\\n%s" (this.inst.EmitRealAssembly (sprintf "%A")) inVariables outVariables
 
     [<StructuredFormatDisplayAttribute("{AsString}")>]
     type Liveness = {
@@ -114,7 +114,7 @@ module FlowGraph =
             ret <- ret + "}\n"
             ret
 
-    let makeGraph (instructions: IC.Instruction list) : Liveness =
+    let makeGraph (instructions: IC.InstructionWithComment list) : Liveness =
         let rec splitLast xs =
                 match xs with
                 | [x] -> x,[]
@@ -138,14 +138,14 @@ module FlowGraph =
             nodes
             |> List.fold 
                 (fun j n -> 
-                    match n.value.inst with
+                    match n.value.inst.inst with
                     | IC.Label(l) -> Map.add l n j
                     | _ -> j)
                 Map.empty
 
         for (f,t) in List.pairwise nodes do
             DirectedGraph.MakeEdge f t
-            match f.value.inst with
+            match f.value.inst.inst with
             | IC.Operation(op) ->
                 match op.jump with
                 | None -> ignore "do nothing"
@@ -153,7 +153,7 @@ module FlowGraph =
                     for l in labels do
                         match jumpTo.TryFind l with
                         | Some(t) -> DirectedGraph.MakeEdge f t
-                        | None -> ignore "jump to procedure"
+                        | None -> printfn "jump to proc"; ignore "jump to procedure"
             | _ -> ignore "do nothing"
 
         let entry,middle,exit = split nodes
@@ -220,7 +220,10 @@ module Intereference =
             if not !visited
             then
                 visited := true
-                match node.value.inst with
+                // 登場するテンポラリを干渉するかに関わらず追加
+                for t in !node.value.outVariables do
+                    nodes <- Map.add t (igraph.MakeNode t) nodes
+                match node.value.inst.inst with
                 | InstructionChoice.Move(dst,src) -> 
                     // for each live-out variables except src, 
                     // add intereference edge to dst

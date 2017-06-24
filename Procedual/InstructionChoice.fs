@@ -110,12 +110,26 @@ with
                     | Assign -> failwith "unreacheable"
                 sprintf "%s %s,%s" op (resolver dst) (resolver src)
 
+type InstructionWithComment = { inst: Instruction; comment: string }
+with
+    member this.definitions =
+        this.inst.definitions
+    member this.uses =
+        this.inst.uses
+    member this.ReplaceUse from to_ =
+        { inst = this.inst.ReplaceUse from to_; comment = this.comment }
+    member this.ReplaceDef from to_ =
+        { inst = this.inst.ReplaceDef from to_; comment = this.comment }
+    member this.EmitRealAssembly resolver =
+        //sprintf "%s //%s" (this.inst.EmitRealAssembly resolver) this.comment
+        this.inst.EmitRealAssembly resolver
+
 type Emitter(frame: Frame.Frame) =
     // save instructions in REVERSE order
     let mutable instructions = []
 
-    let Emit inst =
-        instructions <- inst :: instructions
+    let Emit comment inst =
+        instructions <- { inst = inst; comment = comment } :: instructions
 
     let rec choiceExpr (expr: IR.Expr) : Temporary.Temporary =
         match expr with
@@ -124,7 +138,7 @@ type Emitter(frame: Frame.Frame) =
         | IR.BinaryOp(lhs,Common.Add,IR.Const(x)) ->
             let lhs = choiceExpr lhs
             let t = Temporary.newTemporary()
-            Emit (Move(t,lhs))
+            Emit "MV beore ADDI" (Move(t,lhs))
             {
                 op = ADDI(t,x);
                 dst = [t];
@@ -132,14 +146,14 @@ type Emitter(frame: Frame.Frame) =
                 jump = None
             }
             |> Operation
-            |> Emit
+            |> Emit "ADDI"
             t
         | IR.BinaryOp(IR.Const(0),Common.Add,rhs) ->
             choiceExpr rhs
         | IR.BinaryOp(IR.Const(x),Common.Add,rhs) ->
             let rhs = choiceExpr rhs
             let t = Temporary.newTemporary()
-            Emit (Move(t,rhs))
+            Emit "MOVE before ADDI" (Move(t,rhs))
             {
                 op = ADDI(t,x);
                 dst = [t];
@@ -147,12 +161,12 @@ type Emitter(frame: Frame.Frame) =
                 jump = None
             }
             |> Operation
-            |> Emit
+            |> Emit "ADDI"
             t
         | IR.BinaryOp(lhs,Common.Subtract,IR.Const(x)) ->
             let lhs = choiceExpr lhs
             let t = Temporary.newTemporary()
-            Emit (Move(t,lhs))
+            Emit "MOVE before SUBI" (Move(t,lhs))
             {
                 op = ADDI(t,-x);
                 dst = [t];
@@ -160,13 +174,13 @@ type Emitter(frame: Frame.Frame) =
                 jump = None
             }
             |> Operation
-            |> Emit
+            |> Emit "SUBI"
             t
         | IR.BinaryOp(lhs,op,rhs) ->
             let lhs = choiceExpr lhs
             let rhs = choiceExpr rhs
             let t = Temporary.newTemporary()
-            Emit (Move(t,lhs))
+            Emit "MOVE before BinOp" (Move(t,lhs))
             {
                 op = BINOP(t,op,rhs);
                 dst = [t];
@@ -174,7 +188,7 @@ type Emitter(frame: Frame.Frame) =
                 jump = None;
             }
             |> Operation
-            |> Emit
+            |> Emit "BinOp"
             t
         | IR.Call(IR.LabelRef(l),xs) ->
             let xs = choiceArgs 0 xs
@@ -185,7 +199,7 @@ type Emitter(frame: Frame.Frame) =
                 jump = Some([l]);
             }
             |> Operation
-            |> Emit
+            |> Emit "Call via label directly"
             Frame.returnValue
         | IR.Call(f,xs) ->
             let f = choiceExpr f
@@ -197,7 +211,7 @@ type Emitter(frame: Frame.Frame) =
                 jump = None
             }
             |> Operation
-            |> Emit
+            |> Emit "Call by function value"
             Frame.returnValue
         | IR.Const(x) ->
             let t = Temporary.newTemporary()
@@ -208,18 +222,18 @@ type Emitter(frame: Frame.Frame) =
                 jump = None;
             }
             |> Operation
-            |> Emit
+            |> Emit "Load Constant"
             t
         | IR.Temp(t) when t = frame.framePointer ->
-            Emit (Move(t,Frame.stackPointer))
+            Emit "Load Stack Pointer" (Move(t,Frame.stackPointer))
             {
-                op = ADDI(t,frame.frameSize);
+                op = ADDI(t,-frame.frameSize);
                 dst = [t];
                 src = [t];
                 jump = None;
             }
             |> Operation
-            |> Emit
+            |> Emit "Load Frame Pointer (by subtracting frame size from stack pointer)"
             t
         | IR.Temp(t) -> t
         | IR.ExprSequence(_,_) -> failwith "linearization must remove ESeqs."
@@ -234,7 +248,7 @@ type Emitter(frame: Frame.Frame) =
                 jump = None;
             }
             |> Operation
-            |> Emit
+            |> Emit "Load from memory"
             t
     and choiceArgs (index: int) (exprs: IR.Expr list) : Temporary.Temporary list =
         match exprs with
@@ -242,7 +256,7 @@ type Emitter(frame: Frame.Frame) =
         | expr :: exprs ->
             let t = choiceExpr expr
             // スピルする際にはここで命令発行すればいいね
-            Emit (Move(Frame.registers.Item index,t))
+            Emit (sprintf "assigning %d'th argument" index) (Move(Frame.registers.Item index,t))
             t :: choiceArgs (index + 1) exprs
 
     let choiceStmt (stmt: IR.Statement) =
@@ -258,7 +272,7 @@ type Emitter(frame: Frame.Frame) =
                 jump = Some([l]);
             }
             |> Operation
-            |> Emit
+            |> Emit "Calling via label (stmt)"
         | IR.ExprStmt(IR.Call(f,xs)) ->
             let f = choiceExpr f
             let xs = choiceArgs 0 xs
@@ -269,9 +283,9 @@ type Emitter(frame: Frame.Frame) =
                 jump = Some([])
             }
             |> Operation
-            |> Emit
+            |> Emit "Call by function value (stmt)"
         | IR.ExprStmt(_) -> failwith "i have no idea"
-        | IR.MarkLabel(l) -> Label(l) |> Emit
+        | IR.MarkLabel(l) -> Label(l) |> Emit "marking label"
         | IR.Jump(IR.LabelRef(l),labels) when labels = [l] ->
             {
                 op = JUMP(l);
@@ -280,7 +294,7 @@ type Emitter(frame: Frame.Frame) =
                 jump = Some([l]);
             }
             |> Operation
-            |> Emit
+            |> Emit "Jump Immediate"
         | IR.Jump(l,labels) ->
             let l = choiceExpr l
             {
@@ -290,7 +304,7 @@ type Emitter(frame: Frame.Frame) =
                 jump = Some(labels)
             }
             |> Operation
-            |> Emit
+            |> Emit "Jump by register value"
         | IR.ConditionalJump(cond,t,f) ->
             // assume program falls through else-clause
             let cond = choiceExpr cond
@@ -301,7 +315,7 @@ type Emitter(frame: Frame.Frame) =
                 jump = Some([t])
             }
             |> Operation
-            |> Emit
+            |> Emit "Conditional Jump (else-clause must be down here)"
         | IR.Move(IR.Mem(dst),IR.Mem(src)) ->
             let t = Temporary.newTemporary()
             let src = choiceExpr src
@@ -312,7 +326,7 @@ type Emitter(frame: Frame.Frame) =
                 jump = None;
             }
             |> Operation
-            |> Emit
+            |> Emit "Loading src value to temporary"
             let dst = choiceExpr dst
             {
                 op = STORE(dst,t);
@@ -321,7 +335,7 @@ type Emitter(frame: Frame.Frame) =
                 jump = None;
             }
             |> Operation
-            |> Emit
+            |> Emit "Assigning temporary value to dst"
         | IR.Move(IR.Mem(IR.Temp(t)),value) ->
             let value = choiceExpr value
             {
@@ -331,7 +345,7 @@ type Emitter(frame: Frame.Frame) =
                 jump = None
             }
             |> Operation
-            |> Emit
+            |> Emit "Assigning value to memory (via temporary containing the address)"
         | IR.Move(IR.Mem(dst),src) ->
             let dst = choiceExpr dst
             let src = choiceExpr src
@@ -342,7 +356,7 @@ type Emitter(frame: Frame.Frame) =
                 jump = None
             }
             |> Operation
-            |> Emit
+            |> Emit "Assigning value to memory (by calculating the address)"
         | IR.Move(dst,IR.Mem(IR.Temp(src))) ->
             let dst = choiceExpr dst
             {
@@ -352,7 +366,7 @@ type Emitter(frame: Frame.Frame) =
                 jump = None;
             }
             |> Operation
-            |> Emit
+            |> Emit "Loading value from memory (via temporary containing the address)"
         | IR.Move(dst,IR.Mem(src)) ->
             let dst = choiceExpr dst
             let src = choiceExpr src
@@ -363,19 +377,19 @@ type Emitter(frame: Frame.Frame) =
                 jump = None;
             }
             |> Operation
-            |> Emit
+            |> Emit "Loading value from memory (by calculating address)"
         | IR.Move(IR.Temp(t),e) ->
             let e = choiceExpr e
-            Emit (Move(t,e))
+            Emit "Moving value to temporary" (Move(t,e))
         | IR.Move(_,_) -> failwith "destination of move must be memory"
 
-    member this.EmitStmt stmt : Instruction list =
+    member this.EmitStmt stmt : InstructionWithComment list =
         if List.isEmpty instructions
         then
             choiceStmt stmt
         List.rev instructions
 
-    member this.EmitDecl (decl: TypeCheck.Declaration) : Instruction list =
+    member this.EmitDecl (decl: TypeCheck.Declaration) : InstructionWithComment list =
         if List.isEmpty instructions
         then
             decl.body
@@ -384,16 +398,19 @@ type Emitter(frame: Frame.Frame) =
 
             // mark special registers used after exit
             instructions <- 
-                Operation{
-                    op = NOP;
-                    dst = [Frame.returnAddress; Frame.stackPointer; Frame.returnValue];
-                    src = [];
-                    jump = Some([]);
+                {
+                    inst = Operation{
+                        op = NOP;
+                        dst = [Frame.returnAddress; Frame.stackPointer; Frame.returnValue];
+                        src = [];
+                        jump = Some([]);
+                    };
+                    comment = "Saving RA, SP, RV"
                 }
                 :: instructions
         List.rev instructions
 
-let choiceInstructions (decls: TypeCheck.Declaration list) : Map<Name,Instruction list> =
+let choiceInstructions (decls: TypeCheck.Declaration list) : Map<Name,InstructionWithComment list> =
     decls
     |> List.map (fun decl -> decl.name,(new Emitter(decl.frame)).EmitDecl decl) 
     |> Map.ofList

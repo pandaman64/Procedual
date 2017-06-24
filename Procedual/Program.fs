@@ -9,16 +9,10 @@ module TC = TypeCheck
 [<EntryPoint>]
 let main argv = 
     let source = """
-function fib(x: Int) : Int =
-    if x = 0 then 1
-    else if x = 1 then 1
-    else fib(x - 1) + fib(x - 2);
 function main() : Int =
     let x : Int = 1;
-    {
-        x := x + x;
-        fib(x)
-    };
+    let y : Int = 3;
+    x + y;
 """
     printfn "%s" source
     match run Parser.pProgram source with
@@ -37,7 +31,12 @@ function main() : Int =
             printfn "\nbasic blocks"
             let blocks = decl.body
             let stmts = List.reduce List.append blocks
-            System.IO.File.WriteAllLines(sprintf "%A.ir" decl.name,stmts |> List.map (sprintf "%A") |> List.toArray)
+            let body = stmts |> List.map (sprintf "%A")
+            let header = 
+                List.indexed Frame.registers
+                |> List.map (fun (i,t) -> sprintf "r%d: %A" i t)
+                |> String.concat ", "
+            System.IO.File.WriteAllLines(sprintf "%A.ir" decl.name, List.toArray (header :: body))
 
         let instructions = InstructionChoice.choiceInstructions decls
         for kv in instructions do
@@ -94,7 +93,19 @@ function main() : Int =
             let insts = kv.Value
             let frame = (Map.find name decls).frame
 
-            let insts = RegisterAllocation.allocateRegisters frame insts
+            for inst in insts do
+                printfn "%A" inst
+            let insts, allocation = GreedyRegisterAllocation.allocateRegisters frame insts
+            let insts = 
+                let finder t =
+                    match allocation.TryFind t with
+                    | Some(i) -> i
+                    | None ->
+                        printfn "%A cannot be allocated" t
+                        -1
+                    |> sprintf "r%d"
+                insts
+                |> List.map (fun inst -> inst.EmitRealAssembly finder)
             System.IO.File.WriteAllLines(sprintf "%A.asm" name,insts |> List.toArray)
             
     | Failure(_,err,_) -> printfn "%A" err

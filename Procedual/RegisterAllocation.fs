@@ -54,7 +54,7 @@ let tryAllocateRegisters (nodes: Liveness.Intereference.Nodes) (precolored: Allo
     else
         Failure(spill)
 
-let rec allocateRegisters (frame: Frame.Frame) (insts: InstructionChoice.Instruction list) =
+let rec allocateRegisters (frame: Frame.Frame) (insts: InstructionChoice.InstructionWithComment list) =
     let cfg = Liveness.FlowGraph.makeGraph insts
     let igraph = Liveness.Intereference.analyzeIntereference' cfg
     
@@ -71,7 +71,7 @@ let rec allocateRegisters (frame: Frame.Frame) (insts: InstructionChoice.Instruc
         // do something for spills
         let spills = Set.ofList spills
         let accesses = List.map (fun t -> t,frame.AllocLocal 1 true) (Set.toList spills) |> Map.ofList
-        let rec transform (insts: InstructionChoice.Instruction list) =
+        let rec transform (insts: InstructionChoice.InstructionWithComment list) =
             match insts with
             | [] -> []
             | inst :: rest ->
@@ -124,7 +124,7 @@ let rec allocateRegisters (frame: Frame.Frame) (insts: InstructionChoice.Instruc
                 | Some(i) -> sprintf "r%d as %A" i t
                 | None -> 
                     sprintf "<404> as %A" t
-          
+        insts,alloc  
         //let resolver t = sprintf "%A" t 
-        insts
-        |> List.map (fun inst -> inst.EmitRealAssembly resolver)
+        (*insts
+        |> List.map (fun inst -> inst.EmitRealAssembly resolver)*)
