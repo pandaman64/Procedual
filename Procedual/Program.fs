@@ -10,9 +10,15 @@ module TC = TypeCheck
 let main argv = 
     let source = """
 function main() : Int =
-    let x : Int = 1;
+    let x : Int = 10;
     let y : Int = 3;
-    x + y;
+    {
+        if x = 1 then
+            x := 5
+        else
+            x := 2;
+        x + y
+    };
 """
     printfn "%s" source
     match run Parser.pProgram source with
