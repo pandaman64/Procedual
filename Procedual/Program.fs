@@ -9,16 +9,7 @@ module TC = TypeCheck
 [<EntryPoint>]
 let main argv = 
     let source = """
-function main() : Int =
-    let x : Int = 10;
-    let y : Int = 3;
-    {
-        if x = 1 then
-            x := 5
-        else
-            x := 2;
-        x + y
-    };
+function main() : Bool = 0 = 1;
 """
     printfn "%s" source
     match run Parser.pProgram source with
@@ -51,45 +42,6 @@ function main() : Int =
             for inst in kv.Value do
                 printfn "%A" inst
 
-        (*let cfgs = Map.map (fun _ insts -> Liveness.FlowGraph.makeGraph insts) decls
-        for cfg in cfgs do
-            System.IO.File.WriteAllText(sprintf "%A.dot" cfg.Key,sprintf "%A" cfg.Value)
-
-        let igraphs = Map.map (fun _ cfg -> Liveness.Intereference.analyzeIntereference' cfg) cfgs
-        for igraph in igraphs do
-            let mutable visited = Map.empty 
-            let name = igraph.Key
-            let igraph = igraph.Value
-
-            let mutable text = []
-            let rec visit (node: Liveness.Intereference.Node) =
-                match visited.TryFind node.id with
-                | Some(true) -> ignore "do nothing"
-                | _ -> 
-                    visited <- Map.add node.id true visited
-                    text <- sprintf "%A;" node.value :: text 
-                    for adj in !node.adjacents do
-                        let adj = adj.Value
-                        text <- sprintf "%A -- %A;" node.value adj.value :: text 
-                        visit adj
-            for node in igraph do
-                visit node
-
-            let text = List.distinct text |> String.concat "\n"
-            System.IO.File.WriteAllText(sprintf "%A.igraph.dot" name,sprintf "graph G{\n%s\n}" text)
-
-        for igraph in igraphs do
-            let name = igraph.Key
-            let igraph = igraph.Value
-
-            let precolored = 
-                List.zip Frame.registers (List.init 8 id)
-                |> Map.ofList
-
-            let colors = RegisterAllocation.tryAllocateRegisters igraph precolored
-            printfn "%A's register allocation" name
-            printfn "%A" colors*)
-
         let decls = 
             decls
             |> List.map (fun decl -> decl.name,decl)
@@ -101,8 +53,64 @@ function main() : Int =
 
             for inst in insts do
                 printfn "%A" inst
-            let insts, allocation = GreedyRegisterAllocation.allocateRegisters frame insts
-            let insts = 
+            let insts, igraph, allocation = GreedyRegisterAllocation.allocateRegisters frame insts
+            Liveness.UndirectedGraph.check igraph
+            printfn "graph count: %d" igraph.Head.graph.Count
+            printfn "graph nodes: %d" igraph.Length
+            let interference =
+                let mutable adjacents = Set.empty
+                let mutable colors = Map.empty
+                let mutable visited = Set.empty
+                
+                let addAdjacents f t =
+                    if f > t
+                    then
+                        adjacents <- Set.add (t,f) adjacents
+                    else
+                        adjacents <- Set.add (f,t) adjacents
+                
+                for node in igraph do
+                    if not (visited.Contains node.value)
+                    then
+                        visited <- Set.add node.value visited
+                        for a in !node.adjacents do
+                            addAdjacents node.value a.Value.value
+                        colors <- Map.add node.value (allocation.TryFind node.value) colors
+
+                let adjacents = 
+                    adjacents
+                    |> Set.map (fun (f,t) -> sprintf "%A -- %A;" f t)
+                    |> String.concat "\n"
+
+                let colors =
+                    let colorer t c =
+                        let bucket = 
+                            [
+                                "cyan";
+                                "brown";
+                                "coral";
+                                "darkgreen";
+                                "green";
+                                "pink";
+                                "yellow";
+                                "red";
+                            ]
+                        match c with
+                        | Some(i) -> bucket.Item i
+                        | None -> "gray"
+                    colors
+                    |> Map.map colorer
+                    |> Map.toList
+                    |> List.map (fun (t,c) -> 
+                        match List.tryFindIndex ((=) t) Frame.registers with
+                        | Some(i) -> sprintf "%A [label = \"%A a.k.a r%d\" color = %s];" t t i c
+                        | None -> sprintf "%A [style=filled, color=\"%s\"];" t c
+                        )
+                    |> String.concat "\n"
+
+                sprintf "graph g{\n%s\n%s\n}" adjacents colors
+            System.IO.File.WriteAllText(sprintf "%A.igraph.dot" name,interference)
+            let insts_virtual, insts = 
                 let finder t =
                     match allocation.TryFind t with
                     | Some(i) -> i
@@ -111,8 +119,11 @@ function main() : Int =
                         -1
                     |> sprintf "r%d"
                 insts
+                |> List.map (fun inst -> inst.EmitRealAssembly (sprintf "%A")),
+                insts
                 |> List.map (fun inst -> inst.EmitRealAssembly finder)
-            System.IO.File.WriteAllLines(sprintf "%A.asm" name,insts |> List.toArray)
+            System.IO.File.WriteAllLines(sprintf "%A.virtual.asm" name,insts_virtual |> List.toArray)
+            System.IO.File.WriteAllLines(sprintf "%A.real.asm" name,insts |> List.toArray)
             
     | Failure(_,err,_) -> printfn "%A" err
     0 // 整数の終了コードを返します

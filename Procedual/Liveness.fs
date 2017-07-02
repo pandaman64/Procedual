@@ -58,6 +58,8 @@ module UndirectedGraph =
         member this.InitVisited =
             List.init count (fun _ -> ref false)
 
+        member this.Count = count
+
     let MakeEdge<'a> (from: Node<'a>) (to_: Node<'a>) : unit =
         from.adjacents := Map.add to_.id to_ !from.adjacents
         to_.adjacents := Map.add from.id from !to_.adjacents
@@ -69,6 +71,19 @@ module UndirectedGraph =
     let RemoveNode<'a> (node: Node<'a>) : unit =
         for adj in !node.adjacents do
             RemoveEdge node adj.Value
+
+    let check (nodes: Node<Temporary.Temporary> list) =
+        let mutable tmps = Set.empty
+        for node in nodes do
+            if tmps.Contains node.value then
+                failwith "???"
+            else
+                tmps <- Set.add node.value tmps
+            for kv in !node.adjacents do
+                let adjacents = !kv.Value.adjacents
+                match adjacents.TryFind node.id with
+                | Some(self) when self.value = node.value -> ignore "wakaran"
+                | _ -> failwith "inconsistent graph %A and %A" node.value kv.Value.value
 
 module FlowGraph =
     [<StructuredFormatDisplayAttribute("{AsString}")>]
@@ -95,13 +110,12 @@ module FlowGraph =
 
     [<StructuredFormatDisplayAttribute("{AsString}")>]
     type Liveness = {
-        entry: DirectedGraph.Node<Node>;
-        exit: DirectedGraph.Node<Node>;
+        nodes: DirectedGraph.Node<Node> list
     }
     with
         member this.AsString =
             let mutable ret = "digraph g{\n"
-            let visited = this.entry.graph.InitVisited
+            let visited = this.nodes.Head.graph.InitVisited
             let rec visit (node: DirectedGraph.Node<Node>) =
                 ret <- ret + sprintf """%d [label="%A"];""" node.id node.value + "\n"
                 visited.Item node.id := true
@@ -110,7 +124,7 @@ module FlowGraph =
                     ret <- ret + sprintf "%d -> %d;\n" node.id s.id
                     if not !(visited.Item s.id) then
                         visit s
-            visit this.entry
+            visit this.nodes.Head
             ret <- ret + "}\n"
             ret
 
@@ -193,7 +207,7 @@ module FlowGraph =
         while solveEquation() do
             ignore "solving"
 
-        { entry = entry; exit = exit }
+        { nodes = List.concat [[entry]; middle; [exit]] }
 
 module Intereference =
     type Node = UndirectedGraph.Node<Temporary.Temporary>
@@ -203,26 +217,31 @@ module Intereference =
         let igraph = new UndirectedGraph.Graph()
 
         let mutable nodes = Map.empty
-        let getNode node =
-            match nodes.TryFind node with
-            | None ->
-                let ret = igraph.MakeNode node
-                nodes <- Map.add node ret nodes
-                ret
+
+        let getNode t =
+            match Map.tryFind t nodes with
             | Some(node) -> node
+            | None -> 
+                let node = igraph.MakeNode t
+                nodes <- Map.add t node nodes
+                node
+
         let mark lhs rhs =
             if lhs <> rhs
             then
-                UndirectedGraph.MakeEdge (getNode lhs) (getNode rhs)
-        let visited = liveness.entry.graph.InitVisited
+                let lhs = getNode lhs
+                let rhs = getNode rhs
+                UndirectedGraph.MakeEdge lhs rhs
+
+        let visited = liveness.nodes.Head.graph.InitVisited
         let rec visit (node: DirectedGraph.Node<FlowGraph.Node>) =
             let visited = visited.Item node.id
             if not !visited
             then
                 visited := true
-                // 登場するテンポラリを干渉するかに関わらず追加
-                for t in !node.value.outVariables do
-                    nodes <- Map.add t (igraph.MakeNode t) nodes
+                for v in !node.value.outVariables do
+                    getNode v |> ignore
+
                 match node.value.inst.inst with
                 | InstructionChoice.Move(dst,src) -> 
                     // for each live-out variables except src, 
@@ -236,11 +255,18 @@ module Intereference =
                         for liveOut in !node.value.outVariables do
                             mark def liveOut
 
-                for s in !node.successors do
-                    visit s.Value
+                for kv in !node.successors do
+                    let node = kv.Value
+                    visit node
 
-        visit liveness.entry
+        for node in liveness.nodes do
+            visit node
+
+        let nodes = 
+            nodes
+            |> Map.toList
+            |> List.map snd
+
+        UndirectedGraph.check nodes
 
         nodes
-        |> Map.toList
-        |> List.map snd

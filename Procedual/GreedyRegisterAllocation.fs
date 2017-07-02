@@ -3,12 +3,27 @@
 type Allocation = Map<Temporary.Temporary,int>
 type Spill = Temporary.Temporary list
 
-let rec tryAllocateRegisters (igraph: Liveness.Intereference.Nodes) (initial: Allocation) : Allocation * Temporary.Temporary list =
+let tryAllocateRegisters (igraph: Liveness.Intereference.Nodes) (initial: Allocation) : Allocation * Temporary.Temporary list =
     let colors = [ 0; 1; 2; 3; 4; 5; 6; 7; ] |> Set.ofList
+
+    Liveness.UndirectedGraph.check igraph
+
+    let nodes =
+        igraph
+        |> List.filter (fun node -> initial.ContainsKey node.value |> not)
+        |> List.sortByDescending (fun node -> (!node.adjacents).Count)
+
+    Liveness.UndirectedGraph.check nodes
+
     let folder ((allocation,spills): Allocation * Temporary.Temporary list) (node: Liveness.Intereference.Node) =
+        //printfn "allocating for %A" node.value
         match initial.TryFind node.value with
-        | Some(_) -> allocation,spills
+        | Some(i) -> 
+            printfn "no need for %A. allocation: %d" node.value i
+            allocation,spills
         | None ->
+            for adj in !node.adjacents do
+                assert (!adj.Value.adjacents).ContainsKey node.id
             let adjacent_colors = 
                 !node.adjacents
                 |> Map.toList
@@ -16,10 +31,16 @@ let rec tryAllocateRegisters (igraph: Liveness.Intereference.Nodes) (initial: Al
                 |> List.choose (fun adj -> allocation.TryFind adj.value)
                 |> Set.ofList
             let available_colors = colors - adjacent_colors
+            printfn "adjacents for %A is %A" node.value (!node.adjacents |> Map.toSeq |> Seq.map (fun (_,n) -> n.value))
+            printfn "available colors for %A is %A" node.value available_colors
             match Set.toList available_colors with
-            | c :: _ -> Map.add node.value c allocation,spills
-            | _ -> allocation,node.value :: spills
-    List.fold folder (initial,[]) igraph
+            | [] -> 
+                printfn "spilled: %A" node.value
+                allocation,node.value :: spills
+            | c :: _ ->
+                printfn "allocated %d for %A" c node.value
+                Map.add node.value c allocation,spills
+    List.fold folder (initial,[]) nodes
 
 let spillTemporary (frame: Frame.Frame) (insts: InstructionChoice.InstructionWithComment list) (t: Temporary.Temporary) =
     let access = frame.AllocLocal 1 true
@@ -65,7 +86,7 @@ let rec allocateRegisters (frame: Frame.Frame) (insts: InstructionChoice.Instruc
     let cfg = Liveness.FlowGraph.makeGraph insts
     let igraph = Liveness.Intereference.analyzeIntereference' cfg
     match tryAllocateRegisters igraph initial with
-    | allocation,[] -> insts,allocation
+    | allocation,[] -> insts,igraph,allocation
     | _,spills ->
         let spills = List.filter canSpill spills
         match spills with
