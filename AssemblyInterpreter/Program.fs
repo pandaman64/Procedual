@@ -169,7 +169,11 @@ let main argv =
             |> List.where (fun (_,line) -> line.EndsWith ":")
             |> List.map (fun (i,line) -> line.TrimEnd ':',i)
             |> Map.ofList
-        let registers = [ 0; 0; 0; 0; 0; 0; 0; 0; ]
+        let registers = 
+            printfn "Input initial registers:"
+            (System.Console.ReadLine()).Split ' '
+            |> List.ofArray
+            |> List.map int
         let memories = Map.empty
         { registers = registers; memories = memories; labels = labels; asm = asm; pc = 0 }
 
