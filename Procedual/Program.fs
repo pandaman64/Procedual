@@ -58,8 +58,6 @@ function main() : Bool =
                 printfn "%A" inst
             let insts, igraph, allocation = GreedyRegisterAllocation.allocateRegisters frame insts
             Liveness.UndirectedGraph.check igraph
-            printfn "graph count: %d" igraph.Head.graph.Count
-            printfn "graph nodes: %d" igraph.Length
             let interference =
                 let mutable adjacents = Set.empty
                 let mutable colors = Map.empty
