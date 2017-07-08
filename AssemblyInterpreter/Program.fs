@@ -121,7 +121,7 @@ let step (env: Environment): Environment =
     then
         let dst = op.Item 1
         {
-            registers = insert 7 env.pc env.registers
+            registers = insert 7 (env.pc + 1) env.registers
             memories = env.memories
             labels = env.labels
             asm = env.asm
@@ -135,7 +135,7 @@ let step (env: Environment): Environment =
             memories = env.memories
             labels = env.labels
             asm = env.asm
-            pc = dst
+            pc = List.item dst env.registers
         }
     elif op.Item 0 = "BNZ"
     then
