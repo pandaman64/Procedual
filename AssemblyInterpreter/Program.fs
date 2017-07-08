@@ -127,6 +127,16 @@ let step (env: Environment): Environment =
             asm = env.asm
             pc = Map.find dst env.labels
         }
+    elif op.Item 0 = "JR"
+    then
+        let dst = (op.Item 1).TrimStart 'r' |> int
+        {
+            registers = env.registers
+            memories = env.memories
+            labels = env.labels
+            asm = env.asm
+            pc = dst
+        }
     elif op.Item 0 = "BNZ"
     then
         let operand = (op.Item 1).Split ',' |> List.ofArray

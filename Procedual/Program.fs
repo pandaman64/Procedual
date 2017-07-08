@@ -11,7 +11,7 @@ let main argv =
     let source = """
 function solution() : Int = 42;
 function main() : Bool = 
-    let sol : Int = 42;
+    let sol : Int = solution();
     sol = 42;
 """
     printfn "%s" source
