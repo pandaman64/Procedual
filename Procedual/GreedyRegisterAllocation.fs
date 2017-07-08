@@ -18,8 +18,7 @@ let tryAllocateRegisters (igraph: Liveness.Intereference.Nodes) (initial: Alloca
     let folder ((allocation,spills): Allocation * Temporary.Temporary list) (node: Liveness.Intereference.Node) =
         //printfn "allocating for %A" node.value
         match initial.TryFind node.value with
-        | Some(i) -> 
-            printfn "no need for %A. allocation: %d" node.value i
+        | Some(i) ->
             allocation,spills
         | None ->
             for adj in !node.adjacents do
@@ -31,14 +30,10 @@ let tryAllocateRegisters (igraph: Liveness.Intereference.Nodes) (initial: Alloca
                 |> List.choose (fun adj -> allocation.TryFind adj.value)
                 |> Set.ofList
             let available_colors = colors - adjacent_colors
-            printfn "adjacents for %A is %A" node.value (!node.adjacents |> Map.toSeq |> Seq.map (fun (_,n) -> n.value))
-            printfn "available colors for %A is %A" node.value available_colors
             match Set.toList available_colors with
-            | [] -> 
-                printfn "spilled: %A" node.value
+            | [] ->
                 allocation,node.value :: spills
             | c :: _ ->
-                printfn "allocated %d for %A" c node.value
                 Map.add node.value c allocation,spills
     List.fold folder (initial,[]) nodes
 
