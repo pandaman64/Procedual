@@ -9,7 +9,10 @@ module TC = TypeCheck
 [<EntryPoint>]
 let main argv = 
     let source = """
-function main() : Bool = 42 = 42;
+function solution() : Int = 42;
+function main() : Bool = 
+    let sol : Int = 42;
+    sol = 42;
 """
     printfn "%s" source
     match run Parser.pProgram source with

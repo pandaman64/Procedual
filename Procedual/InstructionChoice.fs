@@ -403,11 +403,22 @@ type Emitter(frame: Frame.Frame) =
                 {
                     inst = Operation{
                         op = NOP;
-                        dst = [Frame.returnAddress; Frame.stackPointer; Frame.returnValue];
-                        src = [];
+                        dst = [];
+                        src = 
+                            [
+                                // Return Address (r7)
+                                Frame.returnAddress;
+                                // Stack Pointer (r6)
+                                Frame.stackPointer;
+                                // Return Value (r0)
+                                Frame.returnValue;
+                                // Callee Save Register (r4, r5)
+                                List.item 4 Frame.registers;
+                                List.item 5 Frame.registers;
+                            ];
                         jump = Some([]);
                     };
-                    comment = "Saving RA, SP, RV"
+                    comment = "Saving RA, SP, RV, R4, R5"
                 }
                 :: instructions
         List.rev instructions
