@@ -182,6 +182,7 @@ let checkDecl (env: Map<Name,Type>) (accesses: Map<Name,Frame.Access> ref) (decl
         let body = checkExpr env accesses frame body
         checkType body.type_ retType
 
+        let returnAddress = Temporary.newTemporary()
         let prologue = 
             [
                 // declare entrypoint
@@ -193,7 +194,9 @@ let checkDecl (env: Map<Name,Type>) (accesses: Map<Name,Frame.Access> ref) (decl
                 ];
                 // assign arguments
                 List.zip frame.arguments (List.truncate frame.arguments.Length Frame.registers)
-                |> List.map (fun (arg,param) -> IR.Move(frame.AccessVar arg,IR.Temp(param)))
+                |> List.map (fun (arg,param) -> IR.Move(frame.AccessVar arg,IR.Temp(param)));
+                // save the return address of this function
+                [ IR.Move(IR.Temp(returnAddress),IR.Temp(Frame.returnAddress)) ];
             ]
             |> List.concat
             |> List.fold (fun s s' -> IR.Sequence(s,s')) IR.Nop
@@ -202,6 +205,9 @@ let checkDecl (env: Map<Name,Type>) (accesses: Map<Name,Frame.Access> ref) (decl
         let epilogue =
             [
                 IR.MarkLabel(epilogueEntry);
+                // restore return address 
+                // HACK: accessing frame pointer after frame pointer restoration results in wrong address
+                IR.Move(IR.Temp(Frame.returnAddress), IR.Temp(returnAddress));
                 // restore stack pointer
                 IR.Move(IR.Temp(Frame.stackPointer),IR.Temp(frame.framePointer))
                 // jump back to callee
