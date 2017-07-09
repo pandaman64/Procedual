@@ -32,6 +32,7 @@ let tryAllocateRegisters (igraph: Liveness.Intereference.Nodes) (initial: Alloca
             let available_colors = colors - adjacent_colors
             match Set.toList available_colors with
             | [] ->
+                printfn "%A spilled" node.value
                 allocation,node.value :: spills
             | c :: _ ->
                 Map.add node.value c allocation,spills

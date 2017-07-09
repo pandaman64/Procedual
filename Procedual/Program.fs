@@ -10,10 +10,9 @@ module TC = TypeCheck
 let main argv = 
     let source = """
 function solution() : Int = 42;
-function main() : Bool = 
-    let sol : Int = solution();
-    sol = 42;
+function main() : Int = solution();
 """
+    let debug = false
     printfn "%s" source
     match run Parser.pProgram source with
     | Success(decls,_,_) -> 
@@ -42,8 +41,8 @@ function main() : Bool =
         for kv in instructions do
             printfn "---------------"
             printfn "%A" kv.Key
-            for inst in kv.Value do
-                printfn "%A" inst
+            //for inst in kv.Value do
+                //printfn "%A" inst
 
         let decls = 
             decls
@@ -54,8 +53,8 @@ function main() : Bool =
             let insts = kv.Value
             let frame = (Map.find name decls).frame
 
-            for inst in insts do
-                printfn "%A" inst
+            //for inst in insts do
+                //printfn "%A" inst
             let insts, igraph, allocation = GreedyRegisterAllocation.allocateRegisters frame insts
             Liveness.UndirectedGraph.check igraph
             let interference =
@@ -120,9 +119,9 @@ function main() : Bool =
                         -1
                     |> sprintf "r%d"
                 insts
-                |> List.map (fun inst -> inst.EmitRealAssembly (sprintf "%A")),
+                |> List.map (fun inst -> inst.EmitRealAssembly (sprintf "%A") debug),
                 insts
-                |> List.map (fun inst -> inst.EmitRealAssembly finder)
+                |> List.map (fun inst -> inst.EmitRealAssembly finder debug)
             System.IO.File.WriteAllLines(sprintf "%A.virtual.asm" name,insts_virtual |> List.toArray)
             System.IO.File.WriteAllLines(sprintf "%A.real.asm" name,insts |> List.toArray)
             
