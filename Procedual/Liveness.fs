@@ -106,7 +106,7 @@ module FlowGraph =
                 |> Set.toList
                 |> List.map (sprintf "%A")
                 |> String.concat "\\n"
-            sprintf "%s\\ninVariables:\\n%s\\noutVariables\\n%s" (this.inst.EmitRealAssembly (sprintf "%A")) inVariables outVariables
+            sprintf "%s\\ninVariables:\\n%s\\noutVariables\\n%s" (this.inst.EmitRealAssembly (sprintf "%A") true) inVariables outVariables
 
     [<StructuredFormatDisplayAttribute("{AsString}")>]
     type Liveness = {

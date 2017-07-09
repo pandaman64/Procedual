@@ -110,6 +110,7 @@ with
                     | Assign -> failwith "unreacheable"
                 sprintf "%s %s,%s" op (resolver dst) (resolver src)
 
+[<StructuredFormatDisplayAttribute("{AsString}")>]
 type InstructionWithComment = { inst: Instruction; comment: string }
 with
     member this.definitions =
@@ -120,9 +121,14 @@ with
         { inst = this.inst.ReplaceUse from to_; comment = this.comment }
     member this.ReplaceDef from to_ =
         { inst = this.inst.ReplaceDef from to_; comment = this.comment }
-    member this.EmitRealAssembly resolver =
-        //sprintf "%s //%s" (this.inst.EmitRealAssembly resolver) this.comment
-        this.inst.EmitRealAssembly resolver
+    member this.EmitRealAssembly resolver debug =
+        if debug
+        then
+            sprintf "%s //%s" (this.inst.EmitRealAssembly resolver) this.comment
+        else
+            this.inst.EmitRealAssembly resolver
+    member this.AsString =
+        sprintf "%A //%s" this.inst this.comment 
 
 type Emitter(frame: Frame.Frame) =
     // save instructions in REVERSE order
