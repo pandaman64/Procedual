@@ -9,8 +9,11 @@ module TC = TypeCheck
 [<EntryPoint>]
 let main argv = 
     let source = """
-function solution() : Int = 42;
-function main() : Int = solution();
+function actualsolution() : Int = 21;
+function solution() : Int = 2 * actualsolution();
+function main() : Int = 
+    let sol : Int = solution();
+    sol;
 """
     let debug = false
     printfn "%s" source

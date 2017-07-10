@@ -90,6 +90,39 @@ let step (env: Environment): Environment =
             asm = env.asm
             pc = env.pc + 1
         }
+    elif op.Item 0 = "SUB"
+    then
+        let dst,src = extract op
+        let registers = insert dst (env.registers.Item dst - env.registers.Item src) env.registers
+        {
+            registers = registers
+            memories = env.memories
+            labels = env.labels
+            asm = env.asm
+            pc = env.pc + 1
+        }
+    elif op.Item 0 = "MUL"
+    then
+        let dst,src = extract op
+        let registers = insert dst (env.registers.Item dst * env.registers.Item src) env.registers
+        {
+            registers = registers
+            memories = env.memories
+            labels = env.labels
+            asm = env.asm
+            pc = env.pc + 1
+        }
+    elif op.Item 0 = "DIV"
+    then
+        let dst,src = extract op
+        let registers = insert dst (env.registers.Item dst / env.registers.Item src) env.registers
+        {
+            registers = registers
+            memories = env.memories
+            labels = env.labels
+            asm = env.asm
+            pc = env.pc + 1
+        }
     elif op.Item 0 = "EQ"
     then
         let dst,src = extract op
