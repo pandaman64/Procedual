@@ -1,11 +1,13 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio 14
-VisualStudioVersion = 14.0.23107.0
+# Visual Studio 15
+VisualStudioVersion = 15.0.26430.6
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "Procedual", "Procedual\Procedual.fsproj", "{06074478-0178-4DCB-8E3E-2B3555FFCBC4}"
 EndProject
 Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "AssemblyInterpreter", "AssemblyInterpreter\AssemblyInterpreter.fsproj", "{30E29B5D-814D-4377-A248-EDFD2D788B81}"
+EndProject
+Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "Assembler", "Assembler\Assembler.fsproj", "{11FF5819-DA2B-459B-8994-6F2A03667871}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -21,6 +23,10 @@ Global
 		{30E29B5D-814D-4377-A248-EDFD2D788B81}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{30E29B5D-814D-4377-A248-EDFD2D788B81}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{30E29B5D-814D-4377-A248-EDFD2D788B81}.Release|Any CPU.Build.0 = Release|Any CPU
+		{11FF5819-DA2B-459B-8994-6F2A03667871}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{11FF5819-DA2B-459B-8994-6F2A03667871}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{11FF5819-DA2B-459B-8994-6F2A03667871}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{11FF5819-DA2B-459B-8994-6F2A03667871}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
