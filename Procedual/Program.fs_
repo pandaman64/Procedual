@@ -1,0 +1,144 @@
+﻿open Common
+module IC = InstructionChoice
+
+[<EntryPoint>]
+let main argv =
+    let fp = Temporary.newTemporary()
+    let frame = Frame.Frame(Var("test"),[],fp)
+    let insts = 
+        let t1 = Temporary.newTemporary()
+        let t2 = Temporary.newTemporary()
+        let ep = Temporary.newLabel()
+        let loop = Temporary.newLabel()
+        let exit = Temporary.newLabel()
+        
+        let emitter = IC.Emitter(frame)
+        let body =
+            [
+                IR.MarkLabel(ep);
+                IR.Move(IR.Temp(t1),IR.Const(0));
+                IR.Move(IR.Temp(t2),IR.Const(10));
+                IR.MarkLabel(loop);
+                IR.Move(IR.Temp(t1),IR.BinaryOp(IR.Temp(t1),Add,IR.Temp(t2)));
+                IR.Move(IR.Temp(t2),IR.BinaryOp(IR.Temp(t2),Subtract,IR.Const(1)));
+                IR.ConditionalJump(IR.BinaryOp(IR.Temp(t2),NotEqual,IR.Const(0)),loop,exit);
+                IR.MarkLabel(exit);
+                IR.Nop;
+            ]
+            |> List.fold (fun s s' -> IR.Sequence(s,s')) IR.Nop
+            |> Canon.linearize
+        let decl : TypeCheck.Declaration =
+            {
+                name = ExternalName(Var("teston"));
+                entryPoint = ep;
+                body = [body];
+                epilogueEntry = exit;
+                frame = frame;
+                type_ = TypeCheck.intType
+            }
+        emitter.EmitDecl decl
+    for inst in insts do
+        match inst with
+        | InstructionChoice.Operation(op) -> printfn "%A" op.jump
+        | _ -> ignore "aaa"
+        printfn "%s" (inst.EmitRealAssembly (sprintf "%A"))
+    let cfg = Liveness.FlowGraph.makeGraph insts
+    let intereference = Liveness.Intereference.analyzeIntereference' cfg
+    
+    let visitCfg =
+        let mutable visited = cfg.entry.graph.InitVisited
+        let mutable str = ""
+        let append x =
+            str <- sprintf "%s\n%s" str x
+        let rec visit (n: Liveness.DirectedGraph.Node<Liveness.FlowGraph.Node>) =
+            visited.Item n.id := true
+            sprintf "%d [label = \"%s\"];" n.id (n.value.inst.EmitRealAssembly (sprintf "%A"))
+            |> append
+            for s in !n.successors do
+                let outVariables = 
+                    !s.Value.value.inVariables
+                    |> Set.map (sprintf "%A")
+                    |> String.concat ","
+                sprintf "%d -> %d [label = \"%s\"]" n.id s.Key outVariables
+                |> append
+                if not !(visited.Item s.Key)
+                then
+                    visit s.Value
+        visit cfg.entry
+        sprintf "digraph g{\n%s\n}" str
+
+    System.IO.File.WriteAllText("cfg.dot",visitCfg)
+
+    let visitInterference =
+        let mutable visited = Map.empty
+        let mutable adjacents = Set.empty
+        let rec addAdjacents f t =
+            if f > t
+            then
+                addAdjacents t f
+            else
+                adjacents <- Set.add (f,t) adjacents
+        let rec visit (n: Liveness.Intereference.Node) =
+            match visited.TryFind n.id with
+            | None ->
+                visited <- Map.add n.id true visited
+                for a in !n.adjacents do
+                    addAdjacents n.value a.Value.value
+            | _ -> ignore "do nothing"
+        for n in intereference do
+            visit n
+        adjacents
+        |> Set.map (fun (f,t) -> sprintf "%A -- %A;" f t)
+        |> String.concat "\n"
+        |> sprintf "graph g{\n%s\n}"
+
+    System.IO.File.WriteAllText("intereference.dot",visitInterference)
+    
+    let insts,alloc = RegisterAllocation.allocateRegisters frame insts
+    let interference =
+        let cfg = Liveness.FlowGraph.makeGraph insts
+        Liveness.Intereference.analyzeIntereference' cfg
+
+    let colors = 
+        [
+            "cyan";
+            "brown";
+            "coral";
+            "darkgreen";
+            "green";
+            "magenda";
+            "yellow";
+            "red";
+        ]
+
+    let allocs =
+        let mutable visited = Map.empty
+        let mutable adjacents = Set.empty
+        let rec addAdjacents f t =
+            if f > t
+            then
+                addAdjacents t f
+            else
+                adjacents <- Set.add (f,t) adjacents
+        let rec visit (n: Liveness.Intereference.Node) =
+            match visited.TryFind n.id with
+            | None ->
+                visited <- Map.add n.id true visited
+                for a in !n.adjacents do
+                    addAdjacents n.value a.Value.value
+            | _ -> ignore "do nothing"
+        for n in intereference do
+            visit n
+        let nodes =
+            intereference
+            |> List.map (fun n -> n.value,colors.Item (Map.find n.value alloc))
+            |> List.map (fun (t,c) -> sprintf "%A [style=filled, color = \"%s\"];" t c)
+            |> String.concat "\n"
+        adjacents
+        |> Set.map (fun (f,t) -> sprintf "%A -- %A;" f t)
+        |> String.concat "\n"
+        |> sprintf "graph g{\n%s\n%s\n}" nodes
+
+    System.IO.File.WriteAllText("inter.alloc.dot",allocs)
+
+    0
