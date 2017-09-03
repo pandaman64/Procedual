@@ -83,7 +83,7 @@ module UndirectedGraph =
                 let adjacents = !kv.Value.adjacents
                 match adjacents.TryFind node.id with
                 | Some(self) when self.value = node.value -> ignore "wakaran"
-                | _ -> failwith "inconsistent graph %A and %A" node.value kv.Value.value
+                | _ -> failwithf "inconsistent graph %A and %A" node.value kv.Value.value
 
 module FlowGraph =
     [<StructuredFormatDisplayAttribute("{AsString}")>]
