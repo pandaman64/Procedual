@@ -254,7 +254,44 @@ type Emitter(frame: Frame.Frame) =
             |> Operation
             |> Emit "Call by function value"
             Frame.returnValue
-        // TODO: LDHI
+        | IR.Const(x) when -256 <= x && x < -128 ->
+            let t = Temporary.newTemporary()
+            {
+                op = LDHI(t,-128);
+                dst = [t];
+                src = [];
+                jump = None;
+            }
+            |> Operation
+            |> Emit "Load Higher bits"
+            {
+                op = ADDI(t,x + 256);
+                dst = [t];
+                src = [t];
+                jump = None
+            }
+            |> Operation
+            |> Emit "Add Lower bits"
+            t
+        | IR.Const(x) when x >= 256 ->
+            let t = Temporary.newTemporary()
+            {
+                op = LDHI(t,x >>> 8);
+                dst = [t];
+                src = [];
+                jump = None;
+            }
+            |> Operation
+            |> Emit "Load Higher bits"
+            {
+                op = ADDI(t,x - 256);
+                dst = [t];
+                src = [t];
+                jump = None
+            }
+            |> Operation
+            |> Emit "Add Lower bits"
+            t
         | IR.Const(x) when x >= 128 ->
             let t = Temporary.newTemporary()
             {
