@@ -7,7 +7,10 @@ type OpCode =
     | LOAD of Temporary.Temporary * Temporary.Temporary
     | STORE of Temporary.Temporary * Temporary.Temporary
     | ADDI of Temporary.Temporary * int
+    | ADDIU of Temporary.Temporary * int
     | LDI of Temporary.Temporary * int
+    | LDIU of Temporary.Temporary * int
+    | LDHI of Temporary.Temporary * int
     | JUMP of Temporary.Label
     | JR of Temporary.Temporary
     | JAL of Temporary.Label
@@ -23,7 +26,10 @@ with
         | LOAD(dst,src) -> LOAD(replace dst,replace src)
         | STORE(dst,src) -> STORE(replace dst,replace src)
         | ADDI(dst,x) -> ADDI(replace dst,x)
+        | ADDIU(dst,x) -> ADDIU(replace dst,x)
         | LDI(dst,x) -> LDI(replace dst,x)
+        | LDIU(dst,x) -> LDIU(replace dst,x)
+        | LDHI(dst,x) -> LDHI(replace dst,x)
         | JR(t) -> JR(replace t)
         | JALR(t) -> JALR(replace t)
         | BNZ(t,l) -> BNZ(replace t,l)
@@ -87,7 +93,10 @@ with
             | LOAD(dst,src) -> sprintf "LD %s,%s" (resolver dst) (resolver src)
             | STORE(dst,src) -> sprintf "ST %s,%s" (resolver dst) (resolver src)
             | ADDI(dst,x) -> sprintf "ADDI %s,%d" (resolver dst) x
+            | ADDIU(dst,x) -> sprintf "ADDIU %s,%d" (resolver dst) x
             | LDI(dst,x) -> sprintf "LDI %s,%d" (resolver dst) x
+            | LDIU(dst,x) -> sprintf "LDIU %s,%d" (resolver dst) x
+            | LDHI(dst,x) -> sprintf "LDHI %s,%d" (resolver dst) x
             | JUMP(l) -> sprintf "J %A" l
             | JR(t) -> sprintf "JR %s" (resolver t)
             | JAL(l) -> sprintf "JAL %A" l
@@ -141,6 +150,19 @@ type Emitter(frame: Frame.Frame) =
         match expr with
         | IR.BinaryOp(lhs,Common.Add,IR.Const(0)) ->
             choiceExpr lhs
+        | IR.BinaryOp(lhs,Common.Add,IR.Const(x)) when x >= 0 ->
+            let lhs = choiceExpr lhs
+            let t = Temporary.newTemporary()
+            Emit "MV beore ADDIU" (Move(t,lhs))
+            {
+                op = ADDIU(t,x);
+                dst = [t];
+                src = [t];
+                jump = None
+            }
+            |> Operation
+            |> Emit "ADDIU"
+            t
         | IR.BinaryOp(lhs,Common.Add,IR.Const(x)) ->
             let lhs = choiceExpr lhs
             let t = Temporary.newTemporary()
@@ -156,6 +178,19 @@ type Emitter(frame: Frame.Frame) =
             t
         | IR.BinaryOp(IR.Const(0),Common.Add,rhs) ->
             choiceExpr rhs
+        | IR.BinaryOp(IR.Const(x),Common.Add,rhs) when x >= 0 ->
+            let rhs = choiceExpr rhs
+            let t = Temporary.newTemporary()
+            Emit "MOVE before ADDIU" (Move(t,rhs))
+            {
+                op = ADDIU(t,x);
+                dst = [t];
+                src = [t];
+                jump = None
+            }
+            |> Operation
+            |> Emit "ADDIU"
+            t
         | IR.BinaryOp(IR.Const(x),Common.Add,rhs) ->
             let rhs = choiceExpr rhs
             let t = Temporary.newTemporary()
@@ -219,6 +254,18 @@ type Emitter(frame: Frame.Frame) =
             |> Operation
             |> Emit "Call by function value"
             Frame.returnValue
+        // TODO: LDHI
+        | IR.Const(x) when x >= 128 ->
+            let t = Temporary.newTemporary()
+            {
+                op = LDIU(t,x);
+                dst = [t];
+                src = [];
+                jump = None;
+            }
+            |> Operation
+            |> Emit "Load Constant"
+            t
         | IR.Const(x) ->
             let t = Temporary.newTemporary()
             {
