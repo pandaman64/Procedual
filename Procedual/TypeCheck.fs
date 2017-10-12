@@ -37,9 +37,8 @@ type Declaration = {
 }
 
 let checkType (t1: Type) (t2: Type) : unit =
-    match t1,t2 with
-    | t1,t2 when t1 <> t2 -> failwithf "type mismatch between %A and %A" t1 t2
-    | _ -> ignore "nothing"
+    if t1 <> t2 then
+        failwithf "type mismatch between %A and %A" t1 t2
 
 let rec checkExpr (env: Map<Name,Type>) (accesses: Map<Name,Frame.Access>) (frame: Frame.Frame) (expr: AlphaTransform.Expr) : Expr =
     let chk = checkExpr env accesses frame
